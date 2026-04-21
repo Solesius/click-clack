@@ -1,0 +1,73 @@
+# ── Build outputs ────────────────────────────────────────────
+/build/
+/dist/
+/out/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+compile_commands.json
+
+# ── CMake ────────────────────────────────────────────────────
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
+Testing/
+
+# ── Frontend (Angular) ───────────────────────────────────────
+node_modules/
+/frontend/dist/
+/frontend/.angular/
+/frontend/coverage/
+/frontend/.nx/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ── Runtime state & data ─────────────────────────────────────
+/build/data/
+/data/
+*.wal
+*.wal.idx
+*.log
+
+# ── Editor / OS ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vs/
+
+# ── VS Code workspace prefs ──────────────────────────────────
+.vscode/
+
+# ── Secrets & local env ──────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Internal modelling artifacts (proprietary, local-only) ──
+/sml/
+*.sml
+RFC-001-CLICK-CLACK.md
+/memories/
+/scripts/internal/
+
+# ── Coverage & profiling ─────────────────────────────────────
+*.gcda
+*.gcno
+*.gcov
+/coverage/
+lcov.info
