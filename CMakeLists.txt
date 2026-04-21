@@ -91,6 +91,11 @@ FetchContent_MakeAvailable(nlohmann_json)
 # google/crc32c — hardware-accelerated CRC-32C (Castagnoli).
 # Used by the WAL codec trailer. Picks SSE4.2 / ARMv8-CRC / software
 # fallback at build time.
+#
+# NOTE: upstream 1.1.2 declares cmake_minimum_required(VERSION 3.1).
+# Modern CMake (≥ 4.x, shipped by macos-14) refuses that. Configure with
+# -DCMAKE_POLICY_VERSION_MINIMUM=3.5 on those hosts (see
+# .github/workflows/publish-npm.yml).
 set(CRC32C_BUILD_TESTS      OFF CACHE BOOL "" FORCE)
 set(CRC32C_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(CRC32C_USE_GLOG         OFF CACHE BOOL "" FORCE)
