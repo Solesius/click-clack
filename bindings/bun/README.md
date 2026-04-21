@@ -1,6 +1,6 @@
 # click-clack-mcp
 
-[![npm](https://img.shields.io/npm/v/click-clack-mcp.svg)](https://www.npmjs.com/package/click-clack-mcp)
+[![npm](https://img.shields.io/npm/v/%40solesius-oss%2Fclick-clack-mcp.svg)](https://www.npmjs.com/package/@solesius-oss/click-clack-mcp)
 
 The [click-clack](https://github.com/Solesius/click-clack) coordination hub
 packaged as a **stdio MCP server** plus a typed Bun FFI client. Zero C++
@@ -12,9 +12,9 @@ ships in the npm tarball, so there's no compiler dance on install.
 ## Install
 
 ```bash
-bun add -g click-clack-mcp        # global → click-clack-mcp binary on $PATH
+bun add -g @solesius-oss/click-clack-mcp   # global → click-clack-mcp binary on $PATH
 # or project-local:
-bun add click-clack-mcp
+bun add @solesius-oss/click-clack-mcp
 ```
 
 From this monorepo (dev):
@@ -67,7 +67,7 @@ Environment variables (all optional):
 ## Library quickstart
 
 ```ts
-import { ClickClackHub } from 'click-clack-mcp'
+import { ClickClackHub } from '@solesius-oss/click-clack-mcp'
 
 const hub = ClickClackHub.open({
   walPath:   './data/wal',
