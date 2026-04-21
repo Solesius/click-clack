@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             platform: linux
             arch: x64
           - os: macos-14
@@ -46,13 +46,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake build-essential ninja-build \
+            gcc-13 g++-13 \
             libssl-dev libjsoncpp-dev uuid-dev zlib1g-dev
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 130
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 130
 
       - name: Install system deps (macOS)
         if: matrix.platform == 'darwin'
         run: brew install cmake ninja openssl@3 jsoncpp
 
       - name: Configure & build libclickclack
+        env:
+          CC:  ${{ matrix.platform == 'linux' && 'gcc-13' || '' }}
+          CXX: ${{ matrix.platform == 'linux' && 'g++-13' || '' }}
         run: |
           cmake -S . -B build-ffi -DCC_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
           cmake --build build-ffi -j --target click_clack_ffi
@@ -75,7 +81,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
