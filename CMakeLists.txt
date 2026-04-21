@@ -88,6 +88,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# google/crc32c — hardware-accelerated CRC-32C (Castagnoli).
+# Used by the WAL codec trailer. Picks SSE4.2 / ARMv8-CRC / software
+# fallback at build time.
+set(CRC32C_BUILD_TESTS      OFF CACHE BOOL "" FORCE)
+set(CRC32C_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(CRC32C_USE_GLOG         OFF CACHE BOOL "" FORCE)
+set(CRC32C_INSTALL          OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    crc32c
+    GIT_REPOSITORY https://github.com/google/crc32c.git
+    GIT_TAG        1.1.2
+)
+FetchContent_MakeAvailable(crc32c)
+
 # ── Backend library (header-only core + compiled main) ───────
 add_library(cc_core INTERFACE)
 target_include_directories(cc_core INTERFACE
@@ -96,6 +110,7 @@ target_include_directories(cc_core INTERFACE
 target_link_libraries(cc_core INTERFACE
     celer
     nlohmann_json::nlohmann_json
+    crc32c
 )
 
 # ── Server executable ────────────────────────────────────────
