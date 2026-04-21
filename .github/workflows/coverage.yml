@@ -89,6 +89,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Install lcov
+        run: sudo apt-get update && sudo apt-get install -y lcov
+
       - name: Run tests with coverage
         run: npm test -- --watch=false --browsers=ChromeHeadlessCI --code-coverage
 
@@ -99,7 +102,11 @@ jobs:
           # Normalise to coverage/frontend.info for downstream steps.
           src=$(find coverage -name 'lcov.info' | head -1)
           test -n "$src" || { echo "lcov.info not found"; exit 1; }
-          cp "$src" coverage/frontend.info
+          # Drop test-double sources so genhtml won't choke on them.
+          lcov --remove "$src" \
+            '*/src/testing/*' '*.spec.ts' \
+            -o coverage/frontend.info \
+            --ignore-errors unused
 
       - name: Upload frontend lcov
         uses: actions/upload-artifact@v4
@@ -143,7 +150,8 @@ jobs:
             --legend --demangle-cpp \
             --prefix "${GITHUB_WORKSPACE}" \
             --branch-coverage \
-            --ignore-errors source,category
+            --synthesize-missing \
+            --ignore-errors source,category,inconsistent,unmapped
 
           genhtml lcov/frontend/frontend.info \
             --output-directory site/frontend \
@@ -151,7 +159,8 @@ jobs:
             --legend \
             --prefix "${GITHUB_WORKSPACE}/frontend" \
             --branch-coverage \
-            --ignore-errors source,category
+            --synthesize-missing \
+            --ignore-errors source,category,inconsistent,unmapped
 
       - name: Extract summary numbers
         id: summary
@@ -320,11 +329,15 @@ jobs:
           genhtml lcov/backend/backend.info -o site/backend \
             --title "click-clack backend (PR #${{ github.event.pull_request.number }})" \
             --legend --demangle-cpp --branch-coverage \
-            --prefix "${GITHUB_WORKSPACE}" --ignore-errors source,category
+            --prefix "${GITHUB_WORKSPACE}" \
+            --synthesize-missing \
+            --ignore-errors source,category,inconsistent,unmapped
           genhtml lcov/frontend/frontend.info -o site/frontend \
             --title "click-clack frontend (PR #${{ github.event.pull_request.number }})" \
             --legend --branch-coverage \
-            --prefix "${GITHUB_WORKSPACE}/frontend" --ignore-errors source,category
+            --prefix "${GITHUB_WORKSPACE}/frontend" \
+            --synthesize-missing \
+            --ignore-errors source,category,inconsistent,unmapped
 
       - name: Upload combined HTML report
         uses: actions/upload-artifact@v4
