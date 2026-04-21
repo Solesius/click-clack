@@ -4,8 +4,8 @@
 
 # click-clack
 
-[![CI](https://github.com/Solesius/click-clack/actions/workflows/ci.yml/badge.svg)](https://github.com/Solesius/click-clack/actions/workflows/ci.yml)
-[![Coverage](https://github.com/Solesius/click-clack/actions/workflows/coverage.yml/badge.svg)](https://solesius.github.io/click-clack/)
+[![CI](https://github.com/Solesius/click-clack/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/Solesius/click-clack/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+[![Coverage](https://github.com/Solesius/click-clack/actions/workflows/coverage.yml/badge.svg?branch=main&event=push)](https://solesius.github.io/click-clack/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
 [![Angular 20](https://img.shields.io/badge/Angular-20-dd0031.svg)](https://angular.dev)
