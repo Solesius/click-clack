@@ -1,0 +1,34 @@
+{
+  "name": "@click-clack/bun",
+  "version": "0.1.0",
+  "description": "Zero-config Bun FFI bindings for the click-clack MCP hub.",
+  "type": "module",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "scripts",
+    "README.md"
+  ],
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "scripts": {
+    "build:native": "bun scripts/build-native.ts",
+    "example": "bun examples/hello.ts",
+    "test": "bun test"
+  },
+  "keywords": [
+    "click-clack",
+    "mcp",
+    "ffi",
+    "agent",
+    "bun"
+  ],
+  "license": "UNLICENSED",
+  "private": true
+}
