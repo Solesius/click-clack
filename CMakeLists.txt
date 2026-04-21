@@ -17,7 +17,8 @@ option(CC_WITH_AWS         "Build celer with AWS S3 backend (requires AWS SDK fe
 option(CC_ENABLE_COVERAGE  "Instrument backend for gcov/lcov coverage"   OFF)
 
 if(CC_ENABLE_COVERAGE)
-    add_compile_options(--coverage -O0 -g)
+    # -fprofile-update=atomic needed for multithreaded tests (Epoch ConcurrentMonotonic)
+    add_compile_options(--coverage -fprofile-update=atomic -O0 -g)
     add_link_options(--coverage)
 endif()
 
