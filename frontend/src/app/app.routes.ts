@@ -3,7 +3,7 @@
 // Top-level router wiring for the click-clack operator UI.
 // ──────────────────────────────────────────────────────────────
 
-import { Routes } from '@angular/router';
+import { type Routes } from '@angular/router';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'timeline', pathMatch: 'full' },

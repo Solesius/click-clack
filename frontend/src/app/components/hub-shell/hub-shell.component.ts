@@ -3,7 +3,7 @@
 // Token-driven dark/light MD3 flat layout with Fluent-style sidenav
 // ──────────────────────────────────────────────────────────────
 
-import { Component, inject, OnInit, ChangeDetectionStrategy, signal } from '@angular/core';
+import { Component, inject, type OnInit, ChangeDetectionStrategy, signal } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { HubStateService } from '../../services/hub-state.service';

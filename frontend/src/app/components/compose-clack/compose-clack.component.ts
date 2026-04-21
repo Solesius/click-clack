@@ -142,7 +142,7 @@ export class ComposeClackComponent {
     const trimmed = (this.payload || '').trim();
     if (trimmed) {
       try { JSON.parse(trimmed); }
-      catch (e) {
+      catch {
         this.payloadError.set('Invalid JSON — will be wrapped as {"note": "..."} on post.');
       }
     }

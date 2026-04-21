@@ -28,7 +28,7 @@ TEST(Codec, SerializeRoundTrip) {
     click.parent   = 0;
     click.payload  = R"({"msg":"hi"})";
 
-    auto clack = click_to_clack(click, 1);
+    auto clack = click_to_clack(click, 1, 0);
     auto bytes = serialize_clack(clack);
     EXPECT_FALSE(bytes.empty());
 
@@ -49,7 +49,7 @@ TEST(Codec, CorruptedCRCDetected) {
     click.task_id  = "";
     click.payload  = "{}";
 
-    auto clack = click_to_clack(click, 2);
+    auto clack = click_to_clack(click, 2, 0);
     auto bytes = serialize_clack(clack);
     ASSERT_GT(bytes.size(), 4u);
 
@@ -74,7 +74,7 @@ TEST(Codec, SerializePerformanceUnder50ms) {
     click.task_id  = "perf-1";
     click.payload  = R"({"step":1,"total":100})";
 
-    auto clack = click_to_clack(click, 1);
+    auto clack = click_to_clack(click, 1, 0);
 
     auto start = std::chrono::steady_clock::now();
     for (int i = 0; i < 10'000; ++i) {

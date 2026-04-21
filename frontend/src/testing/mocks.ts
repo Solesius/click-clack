@@ -1,7 +1,7 @@
 // Shared test utilities — smart mocks for HubStateService and WsService.
 // Uses real Angular signals so tests can drive reactive state from the outside.
 
-import { Signal, WritableSignal, computed, signal } from '@angular/core'
+import { type Signal, type WritableSignal, computed, signal } from '@angular/core'
 import { Subject } from 'rxjs'
 import type {
   AgentPresence,

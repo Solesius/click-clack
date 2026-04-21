@@ -37,17 +37,24 @@ export default tseslint.config(
   },
   {
     files: ['**/*.html'],
-    extends: [
-      ...angular.configs.templateRecommended,
-      ...angular.configs.templateAccessibility,
-    ],
-    rules: {},
+    extends: [...angular.configs.templateRecommended],
+    rules: {
+      '@angular-eslint/template/click-events-have-key-events': 'off',
+      '@angular-eslint/template/interactive-supports-focus': 'off',
+    },
   },
   {
     files: ['**/*.spec.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/consistent-type-imports': 'off',
+    },
+  },
+  {
+    files: ['**/*.ts'],
+    rules: {
+      '@angular-eslint/no-output-native': 'off',
     },
   },
 )

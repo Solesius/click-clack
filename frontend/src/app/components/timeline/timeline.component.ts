@@ -199,7 +199,8 @@ export class TimelineViewComponent {
   toggleVerb(v: string): void {
     this.selectedVerbs.update((set) => {
       const next = new Set(set);
-      next.has(v) ? next.delete(v) : next.add(v);
+      if (next.has(v)) next.delete(v);
+      else next.add(v);
       return next;
     });
   }

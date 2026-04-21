@@ -8,7 +8,7 @@ import { Injectable, signal, computed, inject, DestroyRef } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WsService } from './ws.service';
 import type {
-  Clack, TaskState, AgentPresence, HITLItem, WsMessage, Click, PinEntry
+  Clack, TaskState, AgentPresence, HITLItem, WsMessage, PinEntry
 } from '../models/types';
 
 @Injectable({ providedIn: 'root' })
