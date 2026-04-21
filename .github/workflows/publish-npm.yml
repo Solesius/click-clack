@@ -59,7 +59,12 @@ jobs:
           CC:  ${{ matrix.platform == 'linux' && 'gcc-13' || '' }}
           CXX: ${{ matrix.platform == 'linux' && 'g++-13' || '' }}
         run: |
+          # macos-14 ships CMake 4.x which refuses cmake_minimum_required < 3.5.
+          # google/crc32c 1.1.2 still declares VERSION 3.1, so bump the floor
+          # policy-wise via the top-level CMake flag (honoured for all nested
+          # projects, including FetchContent subprojects).
           cmake -S . -B build-ffi \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DCC_BUILD_TESTS=OFF \
             -DCC_BUILD_SERVER=OFF \
             -DCMAKE_BUILD_TYPE=Release
