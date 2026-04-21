@@ -46,7 +46,10 @@ jobs:
         run: lcov --directory build --zerocounters
 
       - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+        # Skip perf assertions — -O0 --coverage is far slower than the 50ms budget.
+        run: |
+          ctest --test-dir build --output-on-failure \
+            --exclude-regex 'Performance'
 
       - name: Capture coverage
         run: |
