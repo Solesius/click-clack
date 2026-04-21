@@ -112,6 +112,25 @@ target_compile_options(click-clack-mcp PRIVATE
     -Wall -Wextra -Wpedantic -Werror
 )
 
+# ── FFI shared library (Bun / Node / Python / Rust / ...) ────
+#
+# Exposes a tiny C ABI (backend/include/click_clack/ffi/capi.h)
+# that wraps Wal + Materializer + McpServer. Consumers dlopen
+# this and drive the hub via JSON strings. See bindings/bun/.
+add_library(click_clack_ffi SHARED
+    backend/src/capi.cpp
+)
+set_target_properties(click_clack_ffi PROPERTIES
+    OUTPUT_NAME clickclack
+)
+target_link_libraries(click_clack_ffi PRIVATE
+    cc_core
+    drogon
+)
+target_compile_options(click_clack_ffi PRIVATE
+    -Wall -Wextra -Wpedantic -Werror
+)
+
 # ── Tests ────────────────────────────────────────────────────
 if(CC_BUILD_TESTS)
     enable_testing()

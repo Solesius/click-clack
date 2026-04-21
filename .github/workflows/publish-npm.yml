@@ -1,0 +1,127 @@
+# Publish click-clack-mcp to npm.
+#
+# Trigger: push a tag matching `click-clack-mcp-v*` (e.g. click-clack-mcp-v0.1.0).
+# Flow:
+#   1. Build libclickclack.so / .dylib on linux-x64 and macos-arm64.
+#   2. Upload each prebuild as an artifact.
+#   3. Collect all artifacts on the publisher job, drop them under
+#      bindings/bun/native/<platform>-<arch>/, then `npm publish`.
+#
+# Secrets required:
+#   NPM_TOKEN — automation token with publish access to click-clack-mcp.
+name: publish-click-clack-mcp
+
+on:
+  push:
+    tags:
+      - 'click-clack-mcp-v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'If true, run npm publish --dry-run'
+        required: false
+        default: 'true'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential ninja-build \
+            libssl-dev libjsoncpp-dev uuid-dev zlib1g-dev
+
+      - name: Install system deps (macOS)
+        if: matrix.platform == 'darwin'
+        run: brew install cmake ninja openssl@3 jsoncpp
+
+      - name: Configure & build libclickclack
+        run: |
+          cmake -S . -B build-ffi -DCC_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-ffi -j --target click_clack_ffi
+
+      - name: Stage prebuild
+        run: |
+          mkdir -p bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}
+          if [ "${{ matrix.platform }}" = "darwin" ]; then
+            cp build-ffi/libclickclack.dylib bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}/
+          else
+            cp build-ffi/libclickclack.so bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}/
+          fi
+
+      - name: Upload prebuild
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ matrix.platform }}-${{ matrix.arch }}
+          path: bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          path: bindings/bun/native/
+          pattern: prebuild-*
+          merge-multiple: false
+
+      - name: Flatten prebuild layout
+        working-directory: bindings/bun/native
+        run: |
+          set -euxo pipefail
+          for dir in prebuild-*; do
+            plat_arch="${dir#prebuild-}"
+            mkdir -p "$plat_arch"
+            mv "$dir"/* "$plat_arch"/
+            rmdir "$dir"
+          done
+          ls -la .
+          find . -type f
+
+      - name: Pack tarball (sanity check)
+        working-directory: bindings/bun
+        # prepack runs and finds the already-staged native/<plat>-<arch>/lib
+        # so it exits quickly without rebuilding.
+        run: npm pack --dry-run
+
+      - name: Publish
+        working-directory: bindings/bun
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          CLICK_CLACK_PREBUILD: skip
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            npm publish --dry-run --access public
+          else
+            npm publish --access public
+          fi
