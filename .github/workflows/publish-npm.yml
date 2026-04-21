@@ -1,4 +1,4 @@
-# Publish click-clack-mcp to npm.
+# Publish @solesius-oss/click-clack-mcp to npm.
 #
 # Trigger: push a tag matching `click-clack-mcp-v*` (e.g. click-clack-mcp-v0.1.0).
 # Flow:
@@ -8,7 +8,7 @@
 #      bindings/bun/native/<platform>-<arch>/, then `npm publish`.
 #
 # Secrets required:
-#   NPM_TOKEN — automation token with publish access to click-clack-mcp.
+#   NPM_TOKEN — automation token with publish access to @solesius-oss/click-clack-mcp.
 name: publish-click-clack-mcp
 
 on:

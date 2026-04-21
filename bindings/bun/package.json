@@ -1,7 +1,7 @@
 {
-  "name": "click-clack-mcp",
+  "name": "@solesius-oss/click-clack-mcp",
   "version": "0.1.0",
-  "description": "click-clack coordination hub as a stdio MCP server. Zero-config: `bun add -g click-clack-mcp` and point any MCP client at `click-clack-mcp`.",
+  "description": "click-clack coordination hub as a stdio MCP server. Zero-config: `bun add -g @solesius-oss/click-clack-mcp` and point any MCP client at `click-clack-mcp`.",
   "type": "module",
   "main": "src/index.ts",
   "module": "src/index.ts",
