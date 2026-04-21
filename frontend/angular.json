@@ -53,7 +53,9 @@
           },
           "defaultConfiguration": "development",
           "options": {
-            "proxyConfig": "proxy.conf.json"
+            "port": 3008,
+            "open": true,
+            "proxyConfig": "proxy.conf.js"
           }
         },
         "test": {
