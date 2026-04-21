@@ -26,9 +26,35 @@ endif()
 # ── Dependencies ─────────────────────────────────────────────
 include(FetchContent)
 
+find_package(PkgConfig QUIET)
+
+if(PkgConfig_FOUND)
+    pkg_check_modules(CC_ROCKSDB QUIET rocksdb)
+endif()
+
+set(_cc_rocksdb_probe_includes)
+if(CC_ROCKSDB_FOUND)
+    list(APPEND _cc_rocksdb_probe_includes ${CC_ROCKSDB_INCLUDE_DIRS})
+endif()
+if(CMAKE_INCLUDE_PATH)
+    list(APPEND _cc_rocksdb_probe_includes ${CMAKE_INCLUDE_PATH})
+endif()
+if(DEFINED ENV{CMAKE_INCLUDE_PATH} AND NOT "$ENV{CMAKE_INCLUDE_PATH}" STREQUAL "")
+    string(REPLACE ":" ";" _cc_env_include_path "$ENV{CMAKE_INCLUDE_PATH}")
+    list(APPEND _cc_rocksdb_probe_includes ${_cc_env_include_path})
+endif()
+if(APPLE AND EXISTS "/opt/homebrew/include")
+    list(APPEND _cc_rocksdb_probe_includes "/opt/homebrew/include")
+endif()
+if(_cc_rocksdb_probe_includes)
+    list(REMOVE_DUPLICATES _cc_rocksdb_probe_includes)
+    set(CMAKE_REQUIRED_INCLUDES ${_cc_rocksdb_probe_includes})
+endif()
+
 # Composite-tree storage engine
 set(CELER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(CELER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(CELER_BUILD_ROCKSDB ON CACHE BOOL "" FORCE)
 if(CC_WITH_AWS)
     set(CELER_BUILD_S3 ON CACHE BOOL "" FORCE)
 else()
@@ -37,7 +63,7 @@ endif()
 FetchContent_Declare(
     celer
     GIT_REPOSITORY https://github.com/Solesius/celer-mem.git
-    GIT_TAG        main
+    GIT_TAG        df62387aa36fa2e0af2c81c4f87a8c711cda35d9  # fix(rocksdb): RocksDB 9+ API compat
 )
 FetchContent_MakeAvailable(celer)
 

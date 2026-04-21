@@ -53,7 +53,18 @@ jobs:
 
       - name: Install system deps (macOS)
         if: matrix.platform == 'darwin'
-        run: brew install cmake ninja rocksdb
+        run: brew install cmake ninja pkgconf rocksdb
+
+      - name: Export Homebrew paths (macOS)
+        if: matrix.platform == 'darwin'
+        run: |
+          prefix="$(brew --prefix)"
+          echo "CMAKE_PREFIX_PATH=$prefix" >> "$GITHUB_ENV"
+          echo "CMAKE_INCLUDE_PATH=$prefix/include" >> "$GITHUB_ENV"
+          echo "CMAKE_LIBRARY_PATH=$prefix/lib" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig:$prefix/share/pkgconfig" >> "$GITHUB_ENV"
+          echo "CPPFLAGS=-I$prefix/include" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-L$prefix/lib" >> "$GITHUB_ENV"
 
       - name: Configure & build libclickclack
         env:
@@ -66,6 +77,9 @@ jobs:
           # projects, including FetchContent subprojects).
           cmake -S . -B build-ffi \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH:-}" \
+            -DCMAKE_INCLUDE_PATH="${CMAKE_INCLUDE_PATH:-}" \
+            -DCMAKE_LIBRARY_PATH="${CMAKE_LIBRARY_PATH:-}" \
             -DCC_BUILD_TESTS=OFF \
             -DCC_BUILD_SERVER=OFF \
             -DCMAKE_BUILD_TYPE=Release
