@@ -13,6 +13,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # ── Options ──────────────────────────────────────────────────
 option(CC_BUILD_TESTS      "Build GoogleTest suites"  ON)
 option(CC_BUILD_FRONTEND   "Build Angular frontend"   OFF)
+option(CC_BUILD_SERVER     "Build Drogon HTTP server (click-clack-hub); disable for FFI-only builds" ON)
 option(CC_WITH_AWS         "Build celer with AWS S3 backend (requires AWS SDK fetch)" OFF)
 option(CC_ENABLE_COVERAGE  "Instrument backend for gcov/lcov coverage"   OFF)
 
@@ -40,7 +41,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(celer)
 
-# Drogon (HTTP/WS framework)
+# Drogon (HTTP/WS framework) — only needed by click-clack-hub.
+# The FFI shared library and click-clack-mcp stdio bridge do NOT require it,
+# so CI jobs that only need libclickclack.{so,dylib} can pass
+# -DCC_BUILD_SERVER=OFF and skip this heavy fetch entirely.
+if(CC_BUILD_SERVER)
 find_package(Drogon QUIET)
 if(NOT Drogon_FOUND)
     # jsoncpp — required by Drogon, fetch if not installed
@@ -73,6 +78,7 @@ if(NOT Drogon_FOUND)
     )
     FetchContent_MakeAvailable(drogon)
 endif()
+endif() # CC_BUILD_SERVER
 
 # nlohmann/json
 FetchContent_Declare(
@@ -82,6 +88,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# google/crc32c — hardware-accelerated CRC-32C (Castagnoli).
+# Used by the WAL codec trailer. Picks SSE4.2 / ARMv8-CRC / software
+# fallback at build time.
+set(CRC32C_BUILD_TESTS      OFF CACHE BOOL "" FORCE)
+set(CRC32C_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(CRC32C_USE_GLOG         OFF CACHE BOOL "" FORCE)
+set(CRC32C_INSTALL          OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    crc32c
+    GIT_REPOSITORY https://github.com/google/crc32c.git
+    GIT_TAG        1.1.2
+)
+FetchContent_MakeAvailable(crc32c)
+
 # ── Backend library (header-only core + compiled main) ───────
 add_library(cc_core INTERFACE)
 target_include_directories(cc_core INTERFACE
@@ -90,9 +110,11 @@ target_include_directories(cc_core INTERFACE
 target_link_libraries(cc_core INTERFACE
     celer
     nlohmann_json::nlohmann_json
+    crc32c
 )
 
 # ── Server executable ────────────────────────────────────────
+if(CC_BUILD_SERVER)
 add_executable(click-clack-hub
     backend/src/main.cpp
 )
@@ -103,6 +125,7 @@ target_link_libraries(click-clack-hub PRIVATE
 target_compile_options(click-clack-hub PRIVATE
     -Wall -Wextra -Wpedantic -Werror
 )
+endif()
 
 # ── MCP stdio bridge (what VS Code spawns) ───────────────────
 add_executable(click-clack-mcp
@@ -125,7 +148,6 @@ set_target_properties(click_clack_ffi PROPERTIES
 )
 target_link_libraries(click_clack_ffi PRIVATE
     cc_core
-    drogon
 )
 target_compile_options(click_clack_ffi PRIVATE
     -Wall -Wextra -Wpedantic -Werror
@@ -153,7 +175,6 @@ if(CC_BUILD_TESTS)
     target_link_libraries(cc_tests PRIVATE
         cc_core
         GTest::gtest_main
-        drogon
     )
     target_compile_options(cc_tests PRIVATE -Wall -Wextra)
 

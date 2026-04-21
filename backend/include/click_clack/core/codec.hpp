@@ -11,39 +11,18 @@
 #include <chrono>
 #include <cstring>
 
-#ifdef __SSE4_2__
-#include <nmmintrin.h>
-#endif
+#include <crc32c/crc32c.h>
 
 namespace cc {
 
 // ── CRC-32C (Castagnoli) ────────────────────────────────────
+//
+// Thin wrapper around google/crc32c. The upstream library already
+// picks the optimal backend at runtime (SSE4.2 on x86, ARMv8 CRC on
+// aarch64, software Slicing-by-8 fallback elsewhere).
 
 [[nodiscard]] inline auto crc32c(const void* data, std::size_t len) noexcept -> std::uint32_t {
-    auto* p = static_cast<const std::uint8_t*>(data);
-    std::uint32_t crc = 0xFFFFFFFF;
-
-#ifdef __SSE4_2__
-    // Hardware CRC intrinsic path
-    while (len >= 4) {
-        std::uint32_t word{};
-        std::memcpy(&word, p, 4);
-        crc = _mm_crc32_u32(crc, word);
-        p += 4; len -= 4;
-    }
-    while (len-- > 0) {
-        crc = _mm_crc32_u8(crc, *p++);
-    }
-#else
-    // Software fallback — Sarwate table-less
-    for (std::size_t i = 0; i < len; ++i) {
-        crc ^= p[i];
-        for (int bit = 0; bit < 8; ++bit) {
-            crc = (crc >> 1) ^ (0x82F63B78 & -(crc & 1));
-        }
-    }
-#endif
-    return crc ^ 0xFFFFFFFF;
+    return ::crc32c::Crc32c(static_cast<const std::uint8_t*>(data), len);
 }
 
 // ── Wall-clock microseconds ─────────────────────────────────
