@@ -46,40 +46,45 @@ protected:
     cc::Materializer mat_;
 };
 
-TEST_F(MaterializerTest, DISABLED_TaskAnnounceCreatesUnclaimed) {
-    wal_.append(make_click("Announce", "a1", "task-1", R"({"name":"Build thing"})"));
+TEST_F(MaterializerTest, TaskAnnounceCreatesUnclaimed) {
+    wal_.append(make_click("ANNOUNCE", "a1", "task-1", R"({"name":"Build thing"})"));
 
     auto task = mat_.query_task("task-1");
     ASSERT_TRUE(task.has_value());
     ASSERT_TRUE(task->has_value());
     EXPECT_EQ((*task)->task_id, "task-1");
     EXPECT_EQ((*task)->status, cc::TaskStatus::Unclaimed);
+    EXPECT_EQ((*task)->last_verb, "ANNOUNCE");
 }
 
-TEST_F(MaterializerTest, DISABLED_ClaimUpdatesStatus) {
-    wal_.append(make_click("Announce", "a1", "t2"));
-    wal_.append(make_click("Claim", "a2", "t2"));
+TEST_F(MaterializerTest, ClaimUpdatesStatus) {
+    wal_.append(make_click("ANNOUNCE", "a1", "t2"));
+    wal_.append(make_click("CLAIM", "a2", "t2"));
 
     auto task = mat_.query_task("t2");
     ASSERT_TRUE(task.has_value());
     ASSERT_TRUE(task->has_value());
     EXPECT_EQ((*task)->status, cc::TaskStatus::Claimed);
+    ASSERT_TRUE((*task)->owner_agent.has_value());
+    EXPECT_EQ(*(*task)->owner_agent, "a2");
 }
 
-TEST_F(MaterializerTest, DISABLED_CompleteMarksCompleted) {
-    wal_.append(make_click("Announce", "a1", "t3"));
-    wal_.append(make_click("Claim", "a1", "t3"));
-    wal_.append(make_click("Progress", "a1", "t3"));
-    wal_.append(make_click("Complete", "a1", "t3"));
+TEST_F(MaterializerTest, CompleteMarksCompleted) {
+    wal_.append(make_click("ANNOUNCE", "a1", "t3"));
+    wal_.append(make_click("CLAIM", "a1", "t3"));
+    wal_.append(make_click("PROGRESS", "a1", "t3", R"({"pct":50,"summary":"halfway"})"));
+    wal_.append(make_click("COMPLETE", "a1", "t3", R"({"summary":"done"})"));
 
     auto task = mat_.query_task("t3");
     ASSERT_TRUE(task.has_value());
     ASSERT_TRUE(task->has_value());
     EXPECT_EQ((*task)->status, cc::TaskStatus::Completed);
+    EXPECT_EQ((*task)->pct, 100);
+    EXPECT_EQ((*task)->summary, "done");
 }
 
 TEST_F(MaterializerTest, HeartbeatTracksPresence) {
-    wal_.append(make_click("Heartbeat", "agent-x", "", R"({"uptime":120})"));
+    wal_.append(make_click("HEARTBEAT", "agent-x", "", R"({"uptime":120})"));
 
     auto agents = mat_.query_presence();
     ASSERT_TRUE(agents.has_value());
@@ -92,16 +97,21 @@ TEST_F(MaterializerTest, HeartbeatTracksPresence) {
     EXPECT_TRUE(found);
 }
 
-TEST_F(MaterializerTest, DISABLED_ArtifactTracked) {
-    wal_.append(make_click("Artifact", "a1", "t1", R"({"path":"/out/result.json","mime":"application/json"})"));
+TEST_F(MaterializerTest, ArtifactTracked) {
+    wal_.append(make_click("ANNOUNCE", "a1", "t1"));
+    wal_.append(make_click("ARTIFACT", "a1", "t1",
+        R"({"path":"/out/result.json","kind":"file","sha256":"abc123"})"));
 
     auto arts = mat_.query_artifacts("t1");
     ASSERT_TRUE(arts.has_value());
-    EXPECT_GE(arts->size(), 1u);
+    ASSERT_EQ(arts->size(), 1u);
+    EXPECT_EQ((*arts)[0].task_id, "t1");
+    EXPECT_EQ((*arts)[0].path, "/out/result.json");
+    EXPECT_EQ((*arts)[0].review_status, "pending");
 }
 
 TEST_F(MaterializerTest, HITLFlagQueued) {
-    cc::Click c = make_click("Approve", "a1", "t5");
+    cc::Click c = make_click("APPROVE", "a1", "t5");
     c.flags = 0x04; // hitl_req bit
     wal_.append(c);
 
@@ -111,9 +121,9 @@ TEST_F(MaterializerTest, HITLFlagQueued) {
 }
 
 TEST_F(MaterializerTest, AgentLogFiltered) {
-    wal_.append(make_click("Announce", "bob", "t1"));
-    wal_.append(make_click("Claim", "alice", "t1"));
-    wal_.append(make_click("Progress", "bob", "t2"));
+    wal_.append(make_click("ANNOUNCE", "bob", "t1"));
+    wal_.append(make_click("CLAIM", "alice", "t1"));
+    wal_.append(make_click("PROGRESS", "bob", "t2"));
 
     auto bob_log = mat_.query_agent_log("bob", 0, 100);
     ASSERT_TRUE(bob_log.has_value());

@@ -77,6 +77,16 @@ using json = nlohmann::json;
 
 // ── Materializer ────────────────────────────────────────────
 
+namespace detail {
+// nlohmann::json::value() throws when the node isn't an object, so we wrap
+// parses in a guard that replaces non-objects with {}.
+[[nodiscard]] inline auto parse_object(std::string_view raw) -> json {
+    auto j = json::parse(raw, nullptr, false);
+    if (j.is_discarded() || !j.is_object()) return json::object();
+    return j;
+}
+} // namespace detail
+
 class Materializer {
 public:
     Materializer() = default;
@@ -155,8 +165,8 @@ public:
         if (!raw) return celer::Result<std::optional<TaskState>>{std::unexpected(raw.error())};
         if (!*raw) return std::optional<TaskState>{std::nullopt};
 
-        auto j = json::parse(**raw, nullptr, false);
-        if (j.is_discarded()) {
+        auto j = detail::parse_object(**raw);
+        if (j.empty()) {
             return celer::Result<std::optional<TaskState>>{
                 std::unexpected(celer::Error{"views", "invalid task_board JSON"})};
         }
@@ -184,8 +194,8 @@ public:
         std::vector<TaskState> out;
         for (const auto& kv : *pairs) {
             if (static_cast<int>(out.size()) >= limit) break;
-            auto j = json::parse(kv.value, nullptr, false);
-            if (j.is_discarded()) continue;
+            auto j = detail::parse_object(kv.value);
+            if (j.empty()) continue;
 
             TaskState ts{};
             ts.task_id = j.value("task_id", "");
@@ -237,8 +247,8 @@ public:
 
         std::vector<AgentPresenceState> out;
         for (const auto& kv : *pairs) {
-            auto j = json::parse(kv.value, nullptr, false);
-            if (j.is_discarded()) continue;
+            auto j = detail::parse_object(kv.value);
+            if (j.empty()) continue;
             AgentPresenceState ap{};
             ap.agent_id    = j.value("agent_id", "");
             ap.status      = j.value("status", "") == "online" ? AgentStatus::Online : AgentStatus::Offline;
@@ -261,8 +271,8 @@ public:
 
         std::vector<ArtifactEntry> out;
         for (const auto& kv : *pairs) {
-            auto j = json::parse(kv.value, nullptr, false);
-            if (j.is_discarded()) continue;
+            auto j = detail::parse_object(kv.value);
+            if (j.empty()) continue;
             ArtifactEntry ae{};
             ae.task_id       = j.value("task_id", "");
             ae.epoch         = j.value("epoch", std::uint64_t{0});
@@ -307,22 +317,21 @@ private:
     void project_task_board(const Clack& clack) {
         if (clack.task_id.empty()) return;
         const auto v = clack.header.verb;
-        if (v != Verb::Claim && v != Verb::Progress &&
+        if (v != Verb::Announce && v != Verb::Claim && v != Verb::Progress &&
             v != Verb::Complete && v != Verb::Error && v != Verb::Halt) return;
 
         auto existing_raw = task_board_->get_raw(clack.task_id);
         TaskState ts{};
         if (existing_raw && *existing_raw) {
-            auto j = json::parse(**existing_raw, nullptr, false);
-            if (!j.is_discarded()) {
-                ts.task_id        = j.value("task_id", clack.task_id);
-                ts.created_epoch  = j.value("created_epoch", clack.header.epoch);
-                ts.artifact_count = j.value("artifact_count", 0);
-                if (j.contains("owner_agent")) ts.owner_agent = j["owner_agent"].get<std::string>();
-            }
+            auto j = detail::parse_object(**existing_raw);
+            ts.task_id        = j.value("task_id", clack.task_id);
+            ts.created_epoch  = j.value("created_epoch", clack.header.epoch);
+            ts.artifact_count = j.value("artifact_count", 0);
+            if (j.contains("owner_agent")) ts.owner_agent = j["owner_agent"].get<std::string>();
         } else {
             ts.task_id       = clack.task_id;
             ts.created_epoch = clack.header.epoch;
+            ts.status        = TaskStatus::Unclaimed;
         }
 
         ts.last_epoch = clack.header.epoch;
@@ -330,6 +339,13 @@ private:
         ts.updated_us = clack.header.timestamp_us;
 
         switch (v) {
+            case Verb::Announce:
+                // Announce for a never-seen task creates it as Unclaimed;
+                // re-announce on an existing task leaves status alone.
+                if (!(existing_raw && *existing_raw)) {
+                    ts.status = TaskStatus::Unclaimed;
+                }
+                break;
             case Verb::Claim:
                 ts.status      = TaskStatus::Claimed;
                 ts.owner_agent = clack.agent_id;
@@ -337,19 +353,20 @@ private:
                 break;
             case Verb::Progress: {
                 ts.status = TaskStatus::InProgress;
-                auto pj = json::parse(clack.payload, nullptr, false);
+                auto pj = detail::parse_object(clack.payload);
                 ts.pct     = pj.value("pct", ts.pct);
                 ts.summary = pj.value("summary", ts.summary);
                 break;
             }
-            case Verb::Complete:
+            case Verb::Complete: {
                 ts.status = TaskStatus::Completed;
                 ts.pct    = 100;
-                ts.summary = json::parse(clack.payload, nullptr, false).value("summary", "");
+                ts.summary = detail::parse_object(clack.payload).value("summary", "");
                 break;
+            }
             case Verb::Error:
                 ts.status  = TaskStatus::Errored;
-                ts.summary = json::parse(clack.payload, nullptr, false).value("message", "");
+                ts.summary = detail::parse_object(clack.payload).value("message", "");
                 break;
             case Verb::Halt:
                 ts.status = TaskStatus::Halted;
@@ -381,7 +398,7 @@ private:
         const auto v = clack.header.verb;
         if (v != Verb::Announce && v != Verb::Heartbeat) return;
 
-        auto pj = json::parse(clack.payload, nullptr, false);
+        auto pj = detail::parse_object(clack.payload);
         AgentPresenceState ap{};
         ap.agent_id    = clack.agent_id;
         ap.status      = AgentStatus::Online;
@@ -396,7 +413,7 @@ private:
             // Heartbeat — merge with existing
             auto existing_raw = presence_->get_raw(clack.agent_id);
             if (existing_raw && *existing_raw) {
-                auto ej = json::parse(**existing_raw, nullptr, false);
+                auto ej = detail::parse_object(**existing_raw);
                 ap.capabilities = ej.value("capabilities", std::vector<std::string>{});
                 ap.model        = ej.value("model", "");
             }
@@ -410,7 +427,7 @@ private:
         const auto v = clack.header.verb;
 
         if (v == Verb::Artifact) {
-            auto pj = json::parse(clack.payload, nullptr, false);
+            auto pj = detail::parse_object(clack.payload);
             json entry{
                 {"task_id",       clack.task_id},
                 {"epoch",         clack.header.epoch},
@@ -425,7 +442,7 @@ private:
         }
 
         if (v == Verb::Approve || v == Verb::Reject) {
-            auto pj = json::parse(clack.payload, nullptr, false);
+            auto pj = detail::parse_object(clack.payload);
             auto ref_epoch = pj.value("epoch_ref", std::uint64_t{0});
             if (ref_epoch == 0) return;
 
@@ -433,7 +450,7 @@ private:
             auto apairs = artifact_idx_->handle()->prefix_scan("");
             if (!apairs) return;
             for (const auto& kv : *apairs) {
-                auto aj = json::parse(kv.value, nullptr, false);
+                auto aj = detail::parse_object(kv.value);
                 if (aj.value("epoch", std::uint64_t{0}) == ref_epoch) {
                     aj["review_status"] = (v == Verb::Approve) ? "approved" : "rejected";
                     aj["review_epoch"]  = clack.header.epoch;
@@ -452,7 +469,7 @@ private:
 
         // Remove from queue on APPROVE/REJECT
         if (clack.header.verb == Verb::Approve || clack.header.verb == Verb::Reject) {
-            auto pj = json::parse(clack.payload, nullptr, false);
+            auto pj = detail::parse_object(clack.payload);
             auto ref_epoch = pj.value("epoch_ref", std::uint64_t{0});
             if (ref_epoch != 0) {
                 (void)hitl_queue_->del(epoch_key(ref_epoch));

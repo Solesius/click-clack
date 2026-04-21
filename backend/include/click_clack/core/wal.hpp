@@ -74,6 +74,7 @@ public:
         if (open_) {
             clacks_.reset();
             open_ = false;
+            (void)celer::close();
         }
     }
 
