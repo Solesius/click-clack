@@ -118,21 +118,4 @@ bun test                # exercises the FFI surface end-to-end
 bun run example         # examples/hello.ts
 ```
 
-## Publishing to npm
-
-Releases are cut by pushing a git tag:
-
-```bash
-# from the repo root, after bumping bindings/bun/package.json
-git tag click-clack-mcp-v0.1.0
-git push origin click-clack-mcp-v0.1.0
-```
-
-The [`publish-npm.yml`](../../.github/workflows/publish-npm.yml) workflow
-builds `libclickclack` on a Linux-x64 and a macOS-arm64 runner, collects
-both prebuilds under `native/<platform>-<arch>/`, then runs
-`npm publish --access public` using the `NPM_TOKEN` secret.
-
-For a dry run, trigger the workflow manually with `dry_run=true`.
-
 
