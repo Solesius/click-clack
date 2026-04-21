@@ -14,10 +14,11 @@ import { dirname, join, resolve } from 'node:path'
 // ── Native library resolution ──────────────────────────────────
 //
 // Resolution order:
-//   1. $CLICK_CLACK_LIB                — explicit absolute path
-//   2. ./native/libclickclack.<suffix> — shipped prebuild next to this file
-//   3. <repo>/build/libclickclack.<suffix> — dev build from source checkout
-//   4. libclickclack.<suffix> in LD_LIBRARY_PATH (implicit via dlopen fallback)
+//   1. $CLICK_CLACK_LIB                          — explicit absolute path
+//   2. ./native/<platform>-<arch>/libclickclack  — prebuild for this host
+//   3. ./native/libclickclack.<suffix>           — flat prebuild (legacy)
+//   4. <repo>/build/libclickclack.<suffix>       — in-tree dev build
+//   5. libclickclack.<suffix>                    — loader search (LD_LIBRARY_PATH)
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 function resolveLibPath(): string {
@@ -25,7 +26,9 @@ function resolveLibPath(): string {
   if (fromEnv && existsSync(fromEnv)) return fromEnv
 
   const libName = `libclickclack.${suffix}`
+  const platArch = `${process.platform}-${process.arch}`
   const candidates = [
+    resolve(HERE, '..', 'native', platArch, libName),
     resolve(HERE, '..', 'native', libName),
     resolve(HERE, '..', '..', '..', 'build', libName),
   ]

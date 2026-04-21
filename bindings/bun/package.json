@@ -1,7 +1,7 @@
 {
-  "name": "@click-clack/bun",
+  "name": "click-clack-mcp",
   "version": "0.1.0",
-  "description": "Zero-config Bun FFI bindings for the click-clack MCP hub.",
+  "description": "click-clack coordination hub as a stdio MCP server. Zero-config: `bun add -g click-clack-mcp` and point any MCP client at `click-clack-mcp`.",
   "type": "module",
   "main": "src/index.ts",
   "module": "src/index.ts",
@@ -16,23 +16,42 @@
     "src",
     "bin",
     "scripts",
-    "README.md"
+    "native",
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "bun": ">=1.0.0"
   },
   "scripts": {
     "build:native": "bun scripts/build-native.ts",
+    "prepack": "bun scripts/pack-native.ts",
     "example": "bun examples/hello.ts",
     "test": "bun test"
   },
   "keywords": [
     "click-clack",
     "mcp",
+    "model-context-protocol",
     "ffi",
     "agent",
+    "coordination",
     "bun"
   ],
-  "license": "UNLICENSED",
-  "private": true
+  "author": "solesius",
+  "license": "MIT",
+  "homepage": "https://github.com/Solesius/click-clack#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Solesius/click-clack.git",
+    "directory": "bindings/bun"
+  },
+  "bugs": {
+    "url": "https://github.com/Solesius/click-clack/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "os": ["linux", "darwin"],
+  "cpu": ["x64", "arm64"]
 }

@@ -26,7 +26,9 @@ function resolveLib(): string {
     return process.env.CLICK_CLACK_LIB
   }
   const libName = `libclickclack.${suffix}`
+  const platArch = `${process.platform}-${process.arch}`
   const candidates = [
+    resolve(HERE, '..', 'native', platArch, libName),
     resolve(HERE, '..', 'native', libName),
     resolve(HERE, '..', '..', '..', 'build', libName),
   ]
