@@ -3,6 +3,8 @@ name: Coverage
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -109,6 +111,8 @@ jobs:
   publish:
     name: publish to gh-pages
     needs: [backend-coverage, frontend-coverage]
+    # Only deploy from trusted main pushes. PRs still build reports as artifacts.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -287,3 +291,70 @@ jobs:
       - name: Deploy
         id: deploy
         uses: actions/deploy-pages@v4
+
+  pr-report:
+    name: pr coverage report
+    needs: [backend-coverage, frontend-coverage]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install lcov
+        run: sudo apt-get update && sudo apt-get install -y lcov
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-lcov
+          path: lcov/backend
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-lcov
+          path: lcov/frontend
+
+      - name: Render HTML
+        run: |
+          set -e
+          mkdir -p site/backend site/frontend
+          genhtml lcov/backend/backend.info -o site/backend \
+            --title "click-clack backend (PR #${{ github.event.pull_request.number }})" \
+            --legend --demangle-cpp --branch-coverage \
+            --prefix "${GITHUB_WORKSPACE}" --ignore-errors source,category
+          genhtml lcov/frontend/frontend.info -o site/frontend \
+            --title "click-clack frontend (PR #${{ github.event.pull_request.number }})" \
+            --legend --branch-coverage \
+            --prefix "${GITHUB_WORKSPACE}/frontend" --ignore-errors source,category
+
+      - name: Upload combined HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-pr-${{ github.event.pull_request.number }}
+          path: site
+          if-no-files-found: error
+
+      - name: Summarise
+        id: summary
+        run: |
+          be=$(lcov --summary lcov/backend/backend.info  2>&1 | awk '/lines\.+:/ {print $2; exit}' | tr -d '%')
+          fe=$(lcov --summary lcov/frontend/frontend.info 2>&1 | awk '/lines\.+:/ {print $2; exit}' | tr -d '%')
+          be_branch=$(lcov --summary lcov/backend/backend.info  2>&1 | awk '/branches\.+:/ {print $2; exit}' | tr -d '%')
+          fe_branch=$(lcov --summary lcov/frontend/frontend.info 2>&1 | awk '/branches\.+:/ {print $2; exit}' | tr -d '%')
+          echo "be=${be:-0.0}"              >> "$GITHUB_OUTPUT"
+          echo "fe=${fe:-0.0}"              >> "$GITHUB_OUTPUT"
+          echo "be_branch=${be_branch:-0.0}">> "$GITHUB_OUTPUT"
+          echo "fe_branch=${fe_branch:-0.0}">> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: coverage
+          message: |
+            ### 📊 Coverage report
+
+            | component | lines | branches |
+            | --- | --- | --- |
+            | **backend**  | `${{ steps.summary.outputs.be }}%`  | `${{ steps.summary.outputs.be_branch }}%` |
+            | **frontend** | `${{ steps.summary.outputs.fe }}%`  | `${{ steps.summary.outputs.fe_branch }}%` |
+
+            Full HTML report is attached as artifact **coverage-html-pr-${{ github.event.pull_request.number }}** on [this run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
