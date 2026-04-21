@@ -1,0 +1,286 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  backend-coverage:
+    name: backend lcov
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++-13 \
+            libjsoncpp-dev uuid-dev \
+            libcurl4-openssl-dev libssl-dev zlib1g-dev \
+            libsqlite3-dev librocksdb-dev pkg-config \
+            lcov
+
+      - name: Configure with coverage
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCC_BUILD_TESTS=ON \
+            -DCC_ENABLE_COVERAGE=ON \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=gcc-13 \
+            -DCMAKE_CXX_COMPILER=g++-13
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Reset counters
+        run: lcov --directory build --zerocounters
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Capture coverage
+        run: |
+          lcov --directory build --capture \
+            --output-file build/coverage.info \
+            --ignore-errors mismatch,source,gcov,unused \
+            --rc geninfo_unexecuted_blocks=1
+          # Keep only our own backend sources
+          lcov --extract build/coverage.info \
+            "${GITHUB_WORKSPACE}/backend/*" \
+            --output-file build/backend.info \
+            --ignore-errors unused
+          lcov --list build/backend.info
+
+      - name: Upload backend lcov
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-lcov
+          path: build/backend.info
+          if-no-files-found: error
+
+  frontend-coverage:
+    name: frontend lcov
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Run tests with coverage
+        run: npm test -- --watch=false --browsers=ChromeHeadlessCI --code-coverage
+
+      - name: Locate lcov.info
+        run: |
+          find coverage -name 'lcov.info' -print
+          # Angular places reports under coverage/<project>/lcov.info or coverage/lcov.info.
+          # Normalise to coverage/frontend.info for downstream steps.
+          src=$(find coverage -name 'lcov.info' | head -1)
+          test -n "$src" || { echo "lcov.info not found"; exit 1; }
+          cp "$src" coverage/frontend.info
+
+      - name: Upload frontend lcov
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-lcov
+          path: frontend/coverage/frontend.info
+          if-no-files-found: error
+
+  publish:
+    name: publish to gh-pages
+    needs: [backend-coverage, frontend-coverage]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install lcov
+        run: sudo apt-get update && sudo apt-get install -y lcov
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-lcov
+          path: lcov/backend
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-lcov
+          path: lcov/frontend
+
+      - name: Generate HTML reports
+        run: |
+          set -e
+          mkdir -p site/backend site/frontend
+
+          genhtml lcov/backend/backend.info \
+            --output-directory site/backend \
+            --title "click-clack backend coverage" \
+            --legend --demangle-cpp \
+            --prefix "${GITHUB_WORKSPACE}" \
+            --branch-coverage \
+            --ignore-errors source,category
+
+          genhtml lcov/frontend/frontend.info \
+            --output-directory site/frontend \
+            --title "click-clack frontend coverage" \
+            --legend \
+            --prefix "${GITHUB_WORKSPACE}/frontend" \
+            --branch-coverage \
+            --ignore-errors source,category
+
+      - name: Extract summary numbers
+        id: summary
+        run: |
+          be_line=$(lcov --summary lcov/backend/backend.info 2>&1 | awk '/lines\.+:/ {print $2; exit}' | tr -d '%')
+          fe_line=$(lcov --summary lcov/frontend/frontend.info 2>&1 | awk '/lines\.+:/ {print $2; exit}' | tr -d '%')
+          echo "backend=${be_line:-0.0}" >> "$GITHUB_OUTPUT"
+          echo "frontend=${fe_line:-0.0}" >> "$GITHUB_OUTPUT"
+
+      - name: Write landing page
+        env:
+          BE: ${{ steps.summary.outputs.backend }}
+          FE: ${{ steps.summary.outputs.frontend }}
+          SHA: ${{ github.sha }}
+        run: |
+          short_sha=$(echo "$SHA" | cut -c1-7)
+          cat > site/index.html <<HTML
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <title>click-clack coverage</title>
+            <meta name="viewport" content="width=device-width,initial-scale=1" />
+            <style>
+              :root {
+                --bg: #0b0d10;
+                --panel: #14171c;
+                --border: #23272f;
+                --fg: #e6e6e6;
+                --muted: #8b949e;
+                --accent: #7ee787;
+                --accent-2: #79c0ff;
+                --warn: #f0883e;
+                --bad: #f85149;
+              }
+              * { box-sizing: border-box; }
+              html, body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--fg);
+                font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+              }
+              main {
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 64px 24px;
+              }
+              h1 {
+                margin: 0 0 4px;
+                font-size: 28px;
+                letter-spacing: -0.5px;
+              }
+              .sub {
+                color: var(--muted);
+                margin: 0 0 40px;
+                font-size: 13px;
+              }
+              .sub code {
+                background: var(--panel);
+                border: 1px solid var(--border);
+                padding: 1px 6px;
+                border-radius: 4px;
+                font-size: 12px;
+              }
+              .grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 16px;
+              }
+              @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+              a.card {
+                display: block;
+                background: var(--panel);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 24px;
+                color: inherit;
+                text-decoration: none;
+                transition: border-color 120ms, transform 120ms;
+              }
+              a.card:hover { border-color: var(--accent-2); transform: translateY(-1px); }
+              .label {
+                font-size: 12px;
+                color: var(--muted);
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+              }
+              .name { font-size: 20px; margin: 4px 0 16px; font-weight: 600; }
+              .pct { font-size: 36px; font-weight: 600; font-variant-numeric: tabular-nums; }
+              .pct.good { color: var(--accent); }
+              .pct.ok   { color: var(--accent-2); }
+              .pct.warn { color: var(--warn); }
+              .pct.bad  { color: var(--bad); }
+              .meta { margin-top: 8px; font-size: 12px; color: var(--muted); }
+              footer {
+                margin-top: 48px;
+                color: var(--muted);
+                font-size: 12px;
+                text-align: center;
+              }
+              footer a { color: var(--accent-2); text-decoration: none; }
+            </style>
+          </head>
+          <body>
+            <main>
+              <h1>click-clack coverage</h1>
+              <p class="sub">commit <code>$short_sha</code> · lcov + genhtml</p>
+              <div class="grid" id="cards"></div>
+              <footer>
+                generated by <a href="https://github.com/linux-test-project/lcov">lcov</a>
+              </footer>
+            </main>
+            <script>
+              const data = [
+                { name: "backend",  pct: $BE, href: "backend/index.html",  lang: "C++23 · gcov" },
+                { name: "frontend", pct: $FE, href: "frontend/index.html", lang: "Angular · istanbul" },
+              ];
+              const cls = p => p >= 85 ? "good" : p >= 70 ? "ok" : p >= 50 ? "warn" : "bad";
+              document.getElementById("cards").innerHTML = data.map(d => \`
+                <a class="card" href="\${d.href}">
+                  <div class="label">\${d.lang}</div>
+                  <div class="name">\${d.name}</div>
+                  <div class="pct \${cls(d.pct)}">\${d.pct.toFixed(1)}<span style="font-size:18px">%</span></div>
+                  <div class="meta">lines covered</div>
+                </a>
+              \`).join("");
+            </script>
+          </body>
+          </html>
+          HTML
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4

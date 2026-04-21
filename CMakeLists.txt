@@ -10,9 +10,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ── Options ──────────────────────────────────────────────────
-option(CC_BUILD_TESTS    "Build GoogleTest suites"  ON)
-option(CC_BUILD_FRONTEND "Build Angular frontend"   OFF)
-option(CC_WITH_AWS       "Build celer with AWS S3 backend (requires AWS SDK fetch)" OFF)
+option(CC_BUILD_TESTS      "Build GoogleTest suites"  ON)
+option(CC_BUILD_FRONTEND   "Build Angular frontend"   OFF)
+option(CC_WITH_AWS         "Build celer with AWS S3 backend (requires AWS SDK fetch)" OFF)
+option(CC_ENABLE_COVERAGE  "Instrument backend for gcov/lcov coverage"   OFF)
+
+if(CC_ENABLE_COVERAGE)
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
 
 # ── Dependencies ─────────────────────────────────────────────
 include(FetchContent)
