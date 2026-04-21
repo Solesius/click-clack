@@ -17,6 +17,8 @@ option(CC_BUILD_FRONTEND "Build Angular frontend"   OFF)
 include(FetchContent)
 
 # Composite-tree storage engine
+set(CELER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(CELER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     celer
     GIT_REPOSITORY https://github.com/Solesius/celer-mem.git
