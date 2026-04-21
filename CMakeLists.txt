@@ -63,7 +63,7 @@ endif()
 FetchContent_Declare(
     celer
     GIT_REPOSITORY https://github.com/Solesius/celer-mem.git
-    GIT_TAG        main
+    GIT_TAG        df62387aa36fa2e0af2c81c4f87a8c711cda35d9  # fix(rocksdb): RocksDB 9+ API compat
 )
 FetchContent_MakeAvailable(celer)
 
