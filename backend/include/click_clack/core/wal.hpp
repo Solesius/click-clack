@@ -34,7 +34,7 @@ public:
     // ── Lifecycle ───────────────────────────────────────────
 
     [[nodiscard]] auto open(const HubConfig& config) -> celer::VoidResult {
-        auto factory = celer::backends::rocksdb::factory({.path = config.wal_path});
+        auto factory = celer::backends::sqlite::factory({.path = config.wal_path});
         std::vector<celer::TableDescriptor> schema{{"wal", "clacks"}};
         auto res = celer::open(factory, schema);
         if (!res) return res;

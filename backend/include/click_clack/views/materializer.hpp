@@ -96,7 +96,7 @@ public:
     Materializer& operator=(const Materializer&) = delete;
 
     [[nodiscard]] auto open(const HubConfig& config) -> celer::VoidResult {
-        auto factory = celer::backends::rocksdb::factory({.path = config.views_path});
+        auto factory = celer::backends::sqlite::factory({.path = config.views_path});
         std::vector<celer::TableDescriptor> schema{
             {"views", "agent_log"},
             {"views", "task_board"},
