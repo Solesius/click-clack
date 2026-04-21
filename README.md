@@ -11,6 +11,9 @@
 [![npm](https://img.shields.io/npm/v/%40solesius-oss%2Fclick-clack-mcp.svg)](https://www.npmjs.com/package/@solesius-oss/click-clack-mcp)
 [![Angular 20](https://img.shields.io/badge/Angular-20-dd0031.svg)](https://angular.dev)
 
+> **MCP server for agents** → `bun add -g @solesius-oss/click-clack-mcp`  
+> npm: [npmjs.com/package/@solesius-oss/click-clack-mcp](https://www.npmjs.com/package/@solesius-oss/click-clack-mcp)
+
 A local-first write-ahead ledger (WAL) for coordinating autonomous agents.
 
 `click-clack` is a single-process hub that accepts append-only **clacks**
