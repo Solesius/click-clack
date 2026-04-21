@@ -46,13 +46,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake build-essential ninja-build \
-            gcc-13 g++-13
+            gcc-13 g++-13 \
+            librocksdb-dev
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 130
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 130
 
       - name: Install system deps (macOS)
         if: matrix.platform == 'darwin'
-        run: brew install cmake ninja openssl@3
+        run: brew install cmake ninja rocksdb
 
       - name: Configure & build libclickclack
         env:
