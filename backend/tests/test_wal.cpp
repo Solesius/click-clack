@@ -86,12 +86,12 @@ TEST_F(WalTest, ListenerNotified) {
     EXPECT_EQ(notified, 2);
 }
 
-TEST_F(WalTest, DISABLED_RecoverRestoresEpoch) {
+TEST_F(WalTest, RecoverRestoresEpoch) {
     {
         cc::Wal wal;
         wal.open(config_);
         cc::Click c{};
-        c.verb = "Announce";
+        c.verb = "ANNOUNCE";
         c.agent_id = "a1";
         c.payload = "{}";
         for (int i = 0; i < 5; ++i) wal.append(c);
@@ -101,11 +101,12 @@ TEST_F(WalTest, DISABLED_RecoverRestoresEpoch) {
     wal2.open(config_);
     auto rec = wal2.recover();
     ASSERT_TRUE(rec.has_value());
+    EXPECT_EQ(*rec, 5u);
     EXPECT_EQ(wal2.current_epoch(), 5u);
 
     // Next append should be epoch 6
     cc::Click c{};
-    c.verb = "Claim";
+    c.verb = "CLAIM";
     c.agent_id = "a2";
     c.payload = "{}";
     auto res = wal2.append(c);
