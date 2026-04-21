@@ -10,13 +10,14 @@
 #include "../views/materializer.hpp"
 
 #include <nlohmann/json.hpp>
-#include <drogon/drogon.h>
-#include <drogon/utils/Utilities.h>
 
 #include <algorithm>
 #include <chrono>
 #include <functional>
 #include <mutex>
+#include <random>
+#include <sstream>
+#include <iomanip>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -28,6 +29,28 @@ using json = nlohmann::json;
 
 // MCP tool handler: takes JSON args, returns JSON result
 using McpToolHandler = std::function<json(const json& args, std::string_view caller_agent_id)>;
+
+namespace detail {
+// Lightweight RFC-4122 v4 UUID (lowercase hex, dashes), no external deps.
+// Thread-safe via thread_local PRNG.
+inline std::string make_uuid_v4() {
+    thread_local std::mt19937_64 rng{std::random_device{}()};
+    const std::uint64_t a = rng();
+    const std::uint64_t b = rng();
+    std::uint8_t bytes[16];
+    for (int i = 0; i < 8; ++i) bytes[i]     = static_cast<std::uint8_t>(a >> (i * 8));
+    for (int i = 0; i < 8; ++i) bytes[i + 8] = static_cast<std::uint8_t>(b >> (i * 8));
+    bytes[6] = static_cast<std::uint8_t>((bytes[6] & 0x0F) | 0x40); // version 4
+    bytes[8] = static_cast<std::uint8_t>((bytes[8] & 0x3F) | 0x80); // variant RFC 4122
+    std::ostringstream os;
+    os << std::hex << std::setfill('0');
+    for (int i = 0; i < 16; ++i) {
+        os << std::setw(2) << static_cast<int>(bytes[i]);
+        if (i == 3 || i == 5 || i == 7 || i == 9) os << '-';
+    }
+    return os.str();
+}
+} // namespace detail
 
 class McpServer {
 public:
@@ -68,7 +91,7 @@ public:
             auto supplied = args.value("task_id", std::string{});
             if (!supplied.empty()) return {supplied, false};
             // lowercase v4 UUID, e.g. "3b1e0d7a-…"; prefix for readability at a glance
-            return {"t-" + drogon::utils::getUuid(/*lowercase=*/true), true};
+            return {"t-" + detail::make_uuid_v4(), true};
         };
 
         // ── cc.whoami ───────────────────────────────────────
