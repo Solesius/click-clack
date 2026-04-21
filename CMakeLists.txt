@@ -12,6 +12,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ── Options ──────────────────────────────────────────────────
 option(CC_BUILD_TESTS    "Build GoogleTest suites"  ON)
 option(CC_BUILD_FRONTEND "Build Angular frontend"   OFF)
+option(CC_WITH_AWS       "Build celer with AWS S3 backend (requires AWS SDK fetch)" OFF)
 
 # ── Dependencies ─────────────────────────────────────────────
 include(FetchContent)
@@ -19,6 +20,11 @@ include(FetchContent)
 # Composite-tree storage engine
 set(CELER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(CELER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+if(CC_WITH_AWS)
+    set(CELER_BUILD_S3 ON CACHE BOOL "" FORCE)
+else()
+    set(CELER_BUILD_S3 OFF CACHE BOOL "" FORCE)
+endif()
 FetchContent_Declare(
     celer
     GIT_REPOSITORY https://github.com/Solesius/celer-mem.git
