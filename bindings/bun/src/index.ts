@@ -42,6 +42,7 @@ const { symbols: S } = dlopen(LIB_PATH, {
   cc_hub_close:     { args: [FFIType.ptr],                                   returns: FFIType.void },
   cc_hub_dispatch:  { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.cstring },
   cc_hub_list_tools:{ args: [FFIType.ptr],                                   returns: FFIType.cstring },
+  cc_hub_jsonrpc:   { args: [FFIType.ptr, FFIType.cstring],                  returns: FFIType.cstring },
   cc_string_free:   { args: [FFIType.ptr],                                   returns: FFIType.void },
   cc_last_error:    { args: [],                                              returns: FFIType.cstring },
   cc_version:       { args: [],                                              returns: FFIType.cstring },
@@ -161,6 +162,20 @@ export class ClickClackHub {
   static nativeVersion(): string {
     const v = S.cc_version()
     return v ? v.toString() : ''
+  }
+
+  /**
+   * Feed one JSON-RPC 2.0 frame to the hub and return the serialized
+   * response (or an empty string for notifications). This is the
+   * primitive behind the `click-clack-mcp` stdio CLI.
+   */
+  jsonrpc(line: string): string {
+    this.#assertOpen()
+    const retPtr = S.cc_hub_jsonrpc(
+      this.#handle as unknown as number,
+      ptr(toCString(line)),
+    ) as unknown as CString | null
+    return readAndFree(retPtr)
   }
 
   // ── Sugar: the most common tools as first-class methods ─────

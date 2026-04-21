@@ -57,4 +57,23 @@ describe('ClickClackHub', () => {
     expect(res.error).toBe('unknown_tool')
     expect(res.tool).toBe('cc.definitely_not_a_tool')
   })
+
+  it('handles JSON-RPC initialize + tools/list frames', () => {
+    const init = JSON.parse(hub.jsonrpc(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2024-11-05', clientInfo: { name: 'test', version: '0' } },
+    })))
+    expect(init.result.serverInfo.name).toBe('click-clack-hub')
+
+    // notification → empty string
+    expect(hub.jsonrpc(JSON.stringify({
+      jsonrpc: '2.0', method: 'notifications/initialized',
+    }))).toBe('')
+
+    const list = JSON.parse(hub.jsonrpc(JSON.stringify({
+      jsonrpc: '2.0', id: 2, method: 'tools/list',
+    })))
+    expect(Array.isArray(list.result.tools)).toBe(true)
+    expect(list.result.tools.length).toBeGreaterThan(5)
+  })
 })

@@ -67,6 +67,22 @@ char* cc_hub_dispatch(cc_hub_t*   hub,
 char* cc_hub_list_tools(cc_hub_t* hub);
 
 /*
+ * Handle one line of JSON-RPC 2.0 (Model Context Protocol over stdio).
+ *
+ * `line_json` is exactly one JSON-RPC envelope: request, notification,
+ * or response. The hub dispatches the envelope and returns:
+ *   - A heap JSON string containing the response envelope (for requests).
+ *   - An empty heap string "" for notifications or responses (no reply).
+ *
+ * Session state (initialize handshake, caller agent id) is retained
+ * across calls on the same hub handle, making this a complete stdio
+ * MCP server when paired with a simple stdin-to-stdout loop.
+ *
+ * Caller must free the returned string with cc_string_free.
+ */
+char* cc_hub_jsonrpc(cc_hub_t* hub, const char* line_json);
+
+/*
  * Free a string previously returned by this library.
  * Safe to call with NULL.
  */

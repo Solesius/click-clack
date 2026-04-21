@@ -6,10 +6,13 @@ just boot a hub from TypeScript and start clacking.
 ## Install
 
 ```bash
+bun add -g @click-clack/bun      # global → exposes the click-clack-mcp CLI
+# or project-local:
 bun add @click-clack/bun
-# or during development, inside this repo:
+
+# inside this monorepo:
 bun install
-bun run build:native   # compiles libclickclack.<so|dylib|dll> into ./native/
+bun run build:native             # compiles libclickclack.<so|dylib|dll> into ./native/
 ```
 
 The package loads the shared library in this order:
@@ -19,7 +22,35 @@ The package loads the shared library in this order:
 3. `<repo>/build/libclickclack.<suffix>` (in-tree dev builds).
 4. Whatever the OS loader finds on `LD_LIBRARY_PATH` / `PATH`.
 
-## Quickstart
+## Start an MCP server from anywhere
+
+Once installed globally you get a `click-clack-mcp` binary on your `$PATH`.
+It speaks line-delimited JSON-RPC 2.0 over stdin/stdout — point any MCP
+client (VS Code, Claude Desktop, Cursor, …) at it:
+
+```json
+{
+  "mcpServers": {
+    "click-clack": {
+      "command": "click-clack-mcp",
+      "env": {
+        "CC_DATA_ROOT": "${HOME}/.click-clack"
+      }
+    }
+  }
+}
+```
+
+Environment variables (all optional):
+
+| Var              | Default                               |
+| ---------------- | ------------------------------------- |
+| `CC_DATA_ROOT`   | `<cwd>/.click-clack`                  |
+| `CC_WAL_PATH`    | `<CC_DATA_ROOT>/wal`                  |
+| `CC_VIEWS_PATH`  | `<CC_DATA_ROOT>/views`                |
+| `CLICK_CLACK_LIB`| explicit path to `libclickclack.*`    |
+
+## Library quickstart
 
 ```ts
 import { ClickClackHub } from '@click-clack/bun'
@@ -53,6 +84,8 @@ try {
 - `hub.close()` — release native resources (idempotent).
 - `hub.listTools()` — every registered MCP tool name.
 - `hub.call<T>(tool, args, agentId?)` — raw JSON dispatch; works with any tool.
+- `hub.jsonrpc(line)` — feed a single JSON-RPC frame, get the response string
+  (or `""` for notifications). The primitive behind `click-clack-mcp`.
 - Sugar: `postClack`, `claimTask`, `reportProgress`, `completeTask`,
   `queryTask`, `queryTimeline`, `wait`.
 - `ClickClackHub.nativeVersion()` — version baked into `libclickclack`.
@@ -72,3 +105,4 @@ bun run build:native    # cmake --build build-ffi -t click_clack_ffi
 bun test                # exercises the FFI surface end-to-end
 bun run example         # examples/hello.ts
 ```
+

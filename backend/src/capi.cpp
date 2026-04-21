@@ -8,6 +8,8 @@
 #include "click_clack/core/wal.hpp"
 #include "click_clack/views/materializer.hpp"
 #include "click_clack/mcp/mcp_server.hpp"
+#include "click_clack/mcp/dispatcher.hpp"
+#include "click_clack/mcp/protocol.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -47,11 +49,14 @@ void set_error(std::string_view msg) noexcept {
 } // namespace
 
 // The opaque handle owns Wal → Materializer → McpServer in a
-// defined shutdown order.
+// defined shutdown order. Dispatcher + Session are kept alongside
+// so a stdio JSON-RPC client can drive the hub directly via FFI.
 struct cc_hub {
-    cc::Wal                          wal{};
-    cc::Materializer                 views{};
-    std::unique_ptr<cc::McpServer>   mcp{};
+    cc::Wal                                wal{};
+    cc::Materializer                       views{};
+    std::unique_ptr<cc::McpServer>         mcp{};
+    std::unique_ptr<cc::mcp::Dispatcher>   dispatcher{};
+    cc::mcp::Session                       session{};
 };
 
 extern "C" {
@@ -92,6 +97,10 @@ cc_hub_t* cc_hub_open(const char* config_json) {
         hub->mcp = std::make_unique<cc::McpServer>(hub->wal, hub->views);
         hub->mcp->register_tools();
 
+        hub->dispatcher = std::make_unique<cc::mcp::Dispatcher>(
+            *hub->mcp, hub->wal, hub->views);
+        hub->session.id = "ffi";
+
         set_error("");
         return hub.release();
     } catch (const std::exception& e) {
@@ -106,6 +115,7 @@ cc_hub_t* cc_hub_open(const char* config_json) {
 void cc_hub_close(cc_hub_t* hub) {
     if (!hub) return;
     try {
+        hub->dispatcher.reset();
         hub->mcp.reset();
         hub->wal.close();
     } catch (...) { /* swallow: close must not throw across FFI */ }
@@ -152,6 +162,35 @@ char* cc_hub_list_tools(cc_hub_t* hub) {
     } catch (...) {
         set_error("unknown exception");
         return nullptr;
+    }
+}
+
+char* cc_hub_jsonrpc(cc_hub_t* hub, const char* line_json) {
+    try {
+        if (!hub) { set_error("hub is null"); return nullptr; }
+        if (!line_json) { set_error("line_json is null"); return dup_cstr(""); }
+
+        auto envelope = json::parse(line_json, nullptr, false);
+        if (envelope.is_discarded()) {
+            json err{{"jsonrpc", "2.0"}, {"id", nullptr},
+                     {"error", json{{"code", -32700}, {"message", "parse error"}}}};
+            set_error("parse error");
+            return dup_cstr(err.dump());
+        }
+
+        auto msg   = cc::mcp::classify(envelope);
+        auto reply = hub->dispatcher->dispatch(msg, hub->session);
+
+        set_error("");
+        return reply ? dup_cstr(reply->dump()) : dup_cstr("");
+    } catch (const std::exception& e) {
+        set_error(e.what());
+        json err{{"jsonrpc", "2.0"}, {"id", nullptr},
+                 {"error", json{{"code", -32603}, {"message", e.what()}}}};
+        return dup_cstr(err.dump());
+    } catch (...) {
+        set_error("unknown exception");
+        return dup_cstr("");
     }
 }
 

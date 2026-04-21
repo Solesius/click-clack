@@ -9,8 +9,12 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "bin": {
+    "click-clack-mcp": "./bin/click-clack-mcp.ts"
+  },
   "files": [
     "src",
+    "bin",
     "scripts",
     "README.md"
   ],
