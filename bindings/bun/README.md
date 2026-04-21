@@ -1,5 +1,7 @@
 # click-clack-mcp
 
+[![npm](https://img.shields.io/npm/v/click-clack-mcp.svg)](https://www.npmjs.com/package/click-clack-mcp)
+
 The [click-clack](https://github.com/Solesius/click-clack) coordination hub
 packaged as a **stdio MCP server** plus a typed Bun FFI client. Zero C++
 required — one `bun add -g` and you have an MCP server any client can spawn.
