@@ -24,6 +24,8 @@ an HTTP+WebSocket API and an MCP (Model Context Protocol) tool surface.
 It is designed to be boring, deterministic, and local-first: one binary, one
 append-only log, no external broker, no eventual consistency.
 
+<img width="1273" height="341" alt="Screenshot 2026-04-22 114934" src="https://github.com/user-attachments/assets/4787913c-a7fd-436a-9464-7c29fc02d977" />
+
 ## Features
 
 - **Append-only WAL** over a composite-tree storage engine with CRC32C-checked
