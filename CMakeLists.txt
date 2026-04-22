@@ -179,6 +179,7 @@ set_target_properties(click_clack_ffi PROPERTIES
 )
 target_link_libraries(click_clack_ffi PRIVATE
     cc_core
+    celer
 )
 target_compile_options(click_clack_ffi PRIVATE
     -Wall -Wextra -Wpedantic -Werror
