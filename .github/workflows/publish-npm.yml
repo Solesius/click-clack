@@ -53,7 +53,7 @@ jobs:
 
       - name: Install system deps (macOS)
         if: matrix.platform == 'darwin'
-        run: brew install cmake ninja pkgconf rocksdb
+        run: brew install cmake ninja pkgconf
 
       - name: Export Homebrew paths (macOS)
         if: matrix.platform == 'darwin'
@@ -85,14 +85,35 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build-ffi -j --target click_clack_ffi
 
+      - name: Bundle RocksDB dylib into macOS prebuild
+        if: matrix.platform == 'darwin'
+        run: |
+          set -euxo pipefail
+          out_dir="bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}"
+          mkdir -p "$out_dir"
+          cp build-ffi/libclickclack.dylib "$out_dir/"
+
+          # Find the RocksDB dynamic library that libclickclack.dylib depends on
+          rocksdb_dylib="$(otool -L "$out_dir/libclickclack.dylib" | awk '/librocksdb\.[0-9]+\.dylib/{print $1; exit}')"
+          if [ -z "$rocksdb_dylib" ]; then
+            echo "No dynamic RocksDB dependency found in libclickclack.dylib"
+            exit 1
+          fi
+
+          rocksdb_base="$(basename "$rocksdb_dylib")"
+          cp "$rocksdb_dylib" "$out_dir/$rocksdb_base"
+
+          # Adjust install names so the bundled library is used at runtime
+          install_name_tool -id "@loader_path/$rocksdb_base" "$out_dir/$rocksdb_base"
+          install_name_tool -change "$rocksdb_dylib" "@loader_path/$rocksdb_base" "$out_dir/libclickclack.dylib"
+
+          otool -L "$out_dir/libclickclack.dylib"
+
       - name: Stage prebuild
+        if: matrix.platform != 'darwin'
         run: |
           mkdir -p bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}
-          if [ "${{ matrix.platform }}" = "darwin" ]; then
-            cp build-ffi/libclickclack.dylib bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}/
-          else
-            cp build-ffi/libclickclack.so bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}/
-          fi
+          cp build-ffi/libclickclack.so bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}/
 
       - name: Upload prebuild
         uses: actions/upload-artifact@v4
