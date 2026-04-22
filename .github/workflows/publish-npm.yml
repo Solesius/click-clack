@@ -97,21 +97,61 @@ jobs:
           mkdir -p "$out_dir"
           cp build-ffi/libclickclack.dylib "$out_dir/"
 
-          # Find the RocksDB dynamic library that libclickclack.dylib depends on
-          rocksdb_dylib="$(otool -L "$out_dir/libclickclack.dylib" | awk '/librocksdb\.[0-9]+\.dylib/{print $1; exit}')"
-          if [ -z "$rocksdb_dylib" ]; then
-            echo "No dynamic RocksDB dependency found in libclickclack.dylib"
+          # Recursively walk libclickclack.dylib's dynamic dependency tree
+          # and, for every dep that lives outside /usr/lib and /System/Library,
+          # copy it into $out_dir and rewrite install names so the bundled
+          # library is used at runtime. This covers RocksDB (libclickclack
+          # directly links) *and* its transitive Homebrew deps (gflags,
+          # snappy, lz4, zstd, bz2, ...) so consumers don't need Homebrew at
+          # all.
+          declare -A bundled
+          bundle_deps() {
+            local target="$1"
+            local deps
+            deps="$(otool -L "$target" | tail -n +2 | awk '{print $1}')"
+            for dep in $deps; do
+              # Skip self-reference and system libs shipped with macOS
+              case "$dep" in
+                @*|/usr/lib/*|/System/Library/*)
+                  continue
+                  ;;
+              esac
+              if [ ! -f "$dep" ]; then
+                echo "warning: dep not found on disk: $dep" >&2
+                continue
+              fi
+              local base
+              base="$(basename "$dep")"
+              # Rewrite the reference inside $target either way
+              install_name_tool -change "$dep" "@loader_path/$base" "$target" || true
+              if [ -z "${bundled[$base]:-}" ]; then
+                bundled[$base]=1
+                cp -f "$dep" "$out_dir/$base"
+                chmod u+w "$out_dir/$base"
+                install_name_tool -id "@loader_path/$base" "$out_dir/$base" || true
+                # Recurse into the newly bundled dep
+                bundle_deps "$out_dir/$base"
+              fi
+            done
+          }
+
+          bundle_deps "$out_dir/libclickclack.dylib"
+
+          # Ad-hoc re-sign everything we modified so macOS' integrity check
+          # doesn't reject the patched mach-o images at dlopen time.
+          for f in "$out_dir"/*.dylib; do
+            codesign --force --sign - "$f" || true
+          done
+
+          echo "── Final bundle ─────────────────────────────"
+          ls -la "$out_dir"
+          echo "── libclickclack.dylib deps ─────────────────"
+          otool -L "$out_dir/libclickclack.dylib"
+          echo "── Verify no /opt/homebrew leaks ────────────"
+          if otool -L "$out_dir"/*.dylib | grep -E '/opt/homebrew|/usr/local/(opt|Cellar)' ; then
+            echo "ERROR: bundle still references Homebrew paths" >&2
             exit 1
           fi
-
-          rocksdb_base="$(basename "$rocksdb_dylib")"
-          cp "$rocksdb_dylib" "$out_dir/$rocksdb_base"
-
-          # Adjust install names so the bundled library is used at runtime
-          install_name_tool -id "@loader_path/$rocksdb_base" "$out_dir/$rocksdb_base"
-          install_name_tool -change "$rocksdb_dylib" "@loader_path/$rocksdb_base" "$out_dir/libclickclack.dylib"
-
-          otool -L "$out_dir/libclickclack.dylib"
 
       - name: Stage prebuild
         if: matrix.platform != 'darwin'
