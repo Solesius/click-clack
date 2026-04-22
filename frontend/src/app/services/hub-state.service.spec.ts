@@ -9,6 +9,7 @@ describe('HubStateService', () => {
   let service: HubStateService
 
   beforeEach(() => {
+    sessionStorage.clear()
     localStorage.clear()
     ws = mockWsService()
     TestBed.configureTestingModule({
@@ -18,19 +19,49 @@ describe('HubStateService', () => {
   })
 
   describe('operatorId', () => {
-    it('should default to "operator" when localStorage is empty', () => {
+    it('should default to "operator" when sessionStorage is empty', () => {
       expect(service.operatorId()).toBe('operator')
     })
 
-    it('should persist operator id to localStorage on set', () => {
+    // F-10: operator id must live in sessionStorage, NOT localStorage.
+    it('should persist operator id to sessionStorage on set (F-10)', () => {
       service.setOperatorId('khalil')
       expect(service.operatorId()).toBe('khalil')
-      expect(localStorage.getItem('cc.operator_id')).toBe('khalil')
+      expect(sessionStorage.getItem('cc.operator_id')).toBe('khalil')
+    })
+
+    it('should NOT write operator id to localStorage (F-10)', () => {
+      service.setOperatorId('khalil')
+      expect(localStorage.getItem('cc.operator_id')).toBeNull()
+    })
+
+    it('should NOT read from localStorage even when it has a stale value (F-10)', () => {
+      localStorage.setItem('cc.operator_id', 'stale-from-localstorage')
+      // Re-create service after setting localStorage
+      TestBed.resetTestingModule()
+      ws = mockWsService()
+      TestBed.configureTestingModule({
+        providers: [HubStateService, { provide: WsService, useValue: ws }],
+      })
+      const freshService = TestBed.inject(HubStateService)
+      // Must default to 'operator', not the stale localStorage value.
+      expect(freshService.operatorId()).toBe('operator')
     })
 
     it('should fall back to "operator" when set with empty string', () => {
       service.setOperatorId('')
       expect(service.operatorId()).toBe('operator')
+    })
+
+    it('should restore from sessionStorage across service instantiation', () => {
+      sessionStorage.setItem('cc.operator_id', 'persisted-in-session')
+      TestBed.resetTestingModule()
+      ws = mockWsService()
+      TestBed.configureTestingModule({
+        providers: [HubStateService, { provide: WsService, useValue: ws }],
+      })
+      const freshService = TestBed.inject(HubStateService)
+      expect(freshService.operatorId()).toBe('persisted-in-session')
     })
   })
 

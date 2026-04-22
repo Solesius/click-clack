@@ -202,10 +202,13 @@ if(CC_BUILD_TESTS)
         backend/tests/test_wal.cpp
         backend/tests/test_materializer.cpp
         backend/tests/test_mcp.cpp
+        backend/tests/test_security.cpp
     )
     target_link_libraries(cc_tests PRIVATE
         cc_core
+        click_clack_ffi
         GTest::gtest_main
+        GTest::gmock
     )
     target_compile_options(cc_tests PRIVATE -Wall -Wextra)
 
