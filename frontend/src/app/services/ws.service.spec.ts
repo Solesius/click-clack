@@ -117,4 +117,73 @@ describe('WsService', () => {
     service.disconnect()
     expect(service.connected()).toBeFalse()
   })
+
+  // ── F-04: proto-pollution-safe WS parsing ──────────────────
+
+  describe('F-04 — proto-pollution defence', () => {
+    it('should strip __proto__ keys from inbound JSON (reviver)', () => {
+      const got: unknown[] = []
+      service.message$.subscribe(m => got.push(m))
+      service.connect('ws://test/ws')
+      const sock = FakeSocket.instances.at(-1)!
+      sock.open()
+      // Send a frame containing __proto__ injection.
+      sock.receiveRaw('{"type":"clack","__proto__":{"evil":true},"data":{}}')
+      expect(got.length).toBe(1)
+      // __proto__ must not have reached Object.prototype
+      expect((Object.prototype as Record<string, unknown>)['evil']).toBeUndefined()
+    })
+
+    it('should strip constructor and prototype keys from inbound JSON', () => {
+      const got: unknown[] = []
+      service.message$.subscribe(m => got.push(m))
+      service.connect('ws://test/ws')
+      const sock = FakeSocket.instances.at(-1)!
+      sock.open()
+      sock.receiveRaw('{"type":"ack","constructor":{"prototype":{"polluted":true}}}')
+      expect(got.length).toBe(1)
+      // polluted must not have reached Object.prototype
+      expect((Object.prototype as Record<string, unknown>)['polluted']).toBeUndefined()
+    })
+
+    it('should build outbound frame without spreading untrusted payload', () => {
+      service.connect('ws://test/ws')
+      const sock = FakeSocket.instances.at(-1)!
+      sock.open()
+      // A payload containing __proto__ should not override the action field.
+      service.send('post', {
+        __proto__: { evil: true },
+        action: 'OVERRIDDEN',
+        click: { verb: 'Announce' },
+      } as Record<string, unknown>)
+      const frame = JSON.parse(sock.sent.at(-1)!)
+      expect(frame.action).toBe('post') // 'action' in payload must NOT win
+      expect(frame.evil).toBeUndefined()
+    })
+
+    it('should not forward __proto__ key in outbound frame', () => {
+      service.connect('ws://test/ws')
+      const sock = FakeSocket.instances.at(-1)!
+      sock.open()
+      service.send('test', { __proto__: 'injected', data: 'ok' } as Record<string, unknown>)
+      const frame = JSON.parse(sock.sent.at(-1)!)
+      expect(Object.prototype.hasOwnProperty.call(frame, '__proto__')).toBeFalse()
+      expect(frame.data).toBe('ok')
+    })
+
+    it('should not forward constructor or prototype keys in outbound frame', () => {
+      service.connect('ws://test/ws')
+      const sock = FakeSocket.instances.at(-1)!
+      sock.open()
+      service.send('test', {
+        constructor: 'bad',
+        prototype: 'also-bad',
+        safe: 'yes',
+      })
+      const frame = JSON.parse(sock.sent.at(-1)!)
+      expect(Object.prototype.hasOwnProperty.call(frame, 'constructor')).toBeFalse()
+      expect(Object.prototype.hasOwnProperty.call(frame, 'prototype')).toBeFalse()
+      expect(frame.safe).toBe('yes')
+    })
+  })
 })

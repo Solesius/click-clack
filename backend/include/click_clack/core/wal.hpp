@@ -6,6 +6,7 @@
 
 #include "codec.hpp"
 #include "epoch.hpp"
+#include "input_validation.hpp"
 #include "types.hpp"
 
 #include <celer/celer.hpp>
@@ -84,6 +85,12 @@ public:
         if (!open_) {
             return celer::Result<Clack>{
                 std::unexpected(celer::Error{"wal", "wal_not_open"})};
+        }
+
+        // F-01, F-12: validate every untrusted field before it can be
+        // narrow-cast into the fixed-width header or written to the log.
+        if (auto v = validate_click(click); !v) {
+            return celer::Result<Clack>{std::unexpected(v.error())};
         }
 
         const auto ep = epoch_.next();

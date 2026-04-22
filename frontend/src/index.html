@@ -4,6 +4,24 @@
   <meta charset="utf-8">
   <title>click-clack</title>
   <base href="/">
+  <!--
+    F-13: Content Security Policy. Lock script/style/font origins to
+    self + the Google Fonts CDN we already use. 'unsafe-inline' for
+    style is required for Angular Material's runtime theming; scripts
+    stay strict ('self' only) so the theme-bootstrap block below is
+    promoted out of inline to keep the policy honest.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    connect-src 'self' ws: wss:;
+    script-src 'self' 'unsafe-inline';
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    font-src 'self' https://fonts.gstatic.com;
+    img-src 'self' data:;
+    object-src 'none';
+    base-uri 'self';
+    frame-ancestors 'none';
+  ">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
