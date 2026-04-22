@@ -26,6 +26,39 @@
 
 namespace {
 
+// F-14: RAII guard for POSIX fds so every early-return path in dial()
+// and post_json() closes its socket exactly once.
+class FdHandle {
+public:
+    FdHandle() = default;
+    explicit FdHandle(int fd) noexcept : fd_{fd} {}
+    ~FdHandle() { reset(); }
+
+    FdHandle(const FdHandle&) = delete;
+    FdHandle& operator=(const FdHandle&) = delete;
+
+    FdHandle(FdHandle&& other) noexcept : fd_{other.fd_} { other.fd_ = -1; }
+    FdHandle& operator=(FdHandle&& other) noexcept {
+        if (this != &other) {
+            reset();
+            fd_ = other.fd_;
+            other.fd_ = -1;
+        }
+        return *this;
+    }
+
+    [[nodiscard]] int get()  const noexcept { return fd_; }
+    [[nodiscard]] bool valid() const noexcept { return fd_ >= 0; }
+    int release() noexcept { int f = fd_; fd_ = -1; return f; }
+    void reset(int fd = -1) noexcept {
+        if (fd_ >= 0) ::close(fd_);
+        fd_ = fd;
+    }
+
+private:
+    int fd_{-1};
+};
+
 struct Endpoint {
     std::string host{"127.0.0.1"};
     std::uint16_t port{33514};
@@ -41,21 +74,21 @@ struct Endpoint {
 }
 
 [[nodiscard]] int dial(const Endpoint& ep) {
-    int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) return -1;
+    FdHandle sock{::socket(AF_INET, SOCK_STREAM, 0)};
+    if (!sock.valid()) return -1;
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port   = htons(ep.port);
     if (::inet_pton(AF_INET, ep.host.c_str(), &addr.sin_addr) != 1) {
         hostent* he = ::gethostbyname(ep.host.c_str());
-        if (!he || !he->h_addr_list[0]) { ::close(fd); return -1; }
+        if (!he || !he->h_addr_list[0]) return -1;
         std::memcpy(&addr.sin_addr, he->h_addr_list[0], sizeof(in_addr));
     }
-    if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        ::close(fd); return -1;
+    if (::connect(sock.get(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
+        return -1;
     }
-    return fd;
+    return sock.release();
 }
 
 bool send_all(int fd, const char* buf, std::size_t n) {
@@ -69,8 +102,8 @@ bool send_all(int fd, const char* buf, std::size_t n) {
 
 // Read until we've consumed Content-Length bytes of body (HTTP/1.0 Connection: close).
 [[nodiscard]] std::string post_json(const Endpoint& ep, const std::string& body) {
-    int fd = dial(ep);
-    if (fd < 0) return {};
+    FdHandle sock{dial(ep)};
+    if (!sock.valid()) return {};
 
     std::string req;
     req.reserve(body.size() + 256);
@@ -83,16 +116,16 @@ bool send_all(int fd, const char* buf, std::size_t n) {
     req += "Connection: close\r\n\r\n";
     req += body;
 
-    if (!send_all(fd, req.data(), req.size())) { ::close(fd); return {}; }
+    if (!send_all(sock.get(), req.data(), req.size())) return {};
 
     std::string raw;
     char buf[4096];
     for (;;) {
-        auto r = ::recv(fd, buf, sizeof(buf), 0);
+        auto r = ::recv(sock.get(), buf, sizeof(buf), 0);
         if (r <= 0) break;
         raw.append(buf, static_cast<std::size_t>(r));
     }
-    ::close(fd);
+    // sock closes via FdHandle dtor
 
     const auto split = raw.find("\r\n\r\n");
     if (split == std::string::npos) return {};

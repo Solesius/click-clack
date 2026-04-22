@@ -4,6 +4,7 @@
 // ──────────────────────────────────────────────────────────────
 #include "click_clack/ffi/capi.h"
 
+#include "click_clack/core/path_sandbox.hpp"
 #include "click_clack/core/types.hpp"
 #include "click_clack/core/wal.hpp"
 #include "click_clack/views/materializer.hpp"
@@ -16,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -75,8 +77,32 @@ cc_hub_t* cc_hub_open(const char* config_json) {
         }
 
         cc::HubConfig config{};
-        config.wal_path   = cfg_j.value("wal_path",   std::string{"./cc-data/wal"});
-        config.views_path = cfg_j.value("views_path", std::string{"./cc-data/views"});
+        // F-02: confine paths under a local data root. Defaults live under
+        // ./cc-data. Callers can override via JSON but only to relative
+        // paths (or absolute paths already inside the root).
+        namespace fs = std::filesystem;
+        const auto data_root = fs::current_path() / "cc-data";
+        fs::create_directories(data_root);
+
+        auto resolve_cfg_path = [&](const std::string& user,
+                                    const std::string& fallback)
+            -> std::optional<std::string>
+        {
+            auto r = cc::resolve_under_root(data_root,
+                                            user.empty() ? fallback : user);
+            if (!r) {
+                set_error(std::string{"config path rejected: "} + r.error().message);
+                return std::nullopt;
+            }
+            return *r;
+        };
+
+        auto wal_resolved   = resolve_cfg_path(cfg_j.value("wal_path",   std::string{"wal"}),   "wal");
+        if (!wal_resolved)   return nullptr;
+        auto views_resolved = resolve_cfg_path(cfg_j.value("views_path", std::string{"views"}), "views");
+        if (!views_resolved) return nullptr;
+        config.wal_path   = *wal_resolved;
+        config.views_path = *views_resolved;
 
         auto hub = std::make_unique<cc_hub_t>();
 
@@ -200,6 +226,15 @@ void cc_string_free(char* s) {
 
 const char* cc_last_error(void) {
     return tls_last_error.c_str();
+}
+
+size_t cc_error_copy(char* dst, size_t cap) {
+    const auto n = tls_last_error.size();
+    if (!dst || cap == 0) return n;
+    const auto to_copy = n < cap - 1 ? n : cap - 1;
+    if (to_copy > 0) std::memcpy(dst, tls_last_error.data(), to_copy);
+    dst[to_copy] = '\0';
+    return n;
 }
 
 const char* cc_version(void) {

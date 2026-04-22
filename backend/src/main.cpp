@@ -4,6 +4,7 @@
 // ──────────────────────────────────────────────────────────────
 
 #include <click_clack/app_context.hpp>
+#include <click_clack/core/path_sandbox.hpp>
 
 #include <drogon/drogon.h>
 #include <iostream>
@@ -40,8 +41,20 @@ auto main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) -> int {
     config.wal_path   = (root / "wal").string();
     config.views_path = (root / "views").string();
 
-    if (const auto* p = std::getenv("CC_WAL_PATH"))   config.wal_path   = p;
-    if (const auto* p = std::getenv("CC_VIEWS_PATH")) config.views_path = p;
+    // F-02: confine any CC_WAL_PATH/CC_VIEWS_PATH override to the data root.
+    auto apply_sandboxed = [&](const char* env_name, std::string& target) {
+        const auto* p = std::getenv(env_name);
+        if (!p || !*p) return;
+        auto r = cc::resolve_under_root(root, p);
+        if (!r) {
+            std::cerr << "[click-clack] rejecting " << env_name
+                      << " (" << r.error().message << "), keeping default\n";
+            return;
+        }
+        target = *r;
+    };
+    apply_sandboxed("CC_WAL_PATH",   config.wal_path);
+    apply_sandboxed("CC_VIEWS_PATH", config.views_path);
     if (const auto* p = std::getenv("CC_HTTP_PORT"))  config.http_port  = std::stoi(p);
 
     // Ensure data dirs exist
@@ -75,6 +88,10 @@ auto main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) -> int {
         .setLogLevel(trantor::Logger::kInfo)
         .addListener("0.0.0.0", static_cast<uint16_t>(g_app->config.http_port))
         .setThreadNum(4)
+        // F-09: bound per-request body size. 1 MiB is generous for JSON-RPC
+        // MCP tool calls and rejects accidental large-body DoS.
+        .setClientMaxBodySize(1024 * 1024)
+        .setClientMaxMemoryBodySize(256 * 1024)
         .run();
 
     // ── Cleanup (RAII handles the rest) ─────────────────────

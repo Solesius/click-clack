@@ -13,9 +13,12 @@
 #include <nlohmann/json.hpp>
 
 #include <atomic>
+#include <cctype>
+#include <cstdlib>
 #include <mutex>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace cc {
@@ -59,9 +62,17 @@ public:
         }
     }
 
-    void handleNewConnection(const drogon::HttpRequestPtr&,
+    void handleNewConnection(const drogon::HttpRequestPtr& req,
                              const drogon::WebSocketConnectionPtr& ws_conn) override
     {
+        // F-03: CSWSH defence. Accept only requests whose Origin header
+        // matches a configured allowlist. Browsers always send Origin on
+        // cross-origin WS upgrades; native MCP bridges that don't set one
+        // are allowed because they are not subject to the same-origin model.
+        if (!origin_allowed(req->getHeader("Origin"))) {
+            ws_conn->forceClose();
+            return;
+        }
         std::lock_guard lock(mu_);
         clients_.insert(ws_conn);
     }
@@ -170,6 +181,42 @@ private:
         }
 
         ws_conn->send(json{{"type", "snapshot"}, {"view", view}, {"data", data}}.dump());
+    }
+
+    // F-03: origin allowlist. Defaults cover the Angular dev server and
+    // common loopback ports. Operators can override/extend via the
+    // CC_ALLOWED_ORIGINS env var (comma-separated). An empty Origin
+    // header is allowed because non-browser clients (MCP stdio bridge,
+    // curl, native SDKs) are not subject to the same-origin model.
+    [[nodiscard]] static auto origin_allowed(std::string_view origin) -> bool {
+        if (origin.empty()) return true;
+
+        static const auto allowed = [] {
+            std::set<std::string, std::less<>> out{
+                "http://localhost:3008",
+                "http://127.0.0.1:3008",
+                "http://localhost:33514",
+                "http://127.0.0.1:33514",
+            };
+            if (const char* env = std::getenv("CC_ALLOWED_ORIGINS")) {
+                std::string buf{env};
+                std::size_t pos = 0;
+                while (pos < buf.size()) {
+                    const auto comma = buf.find(',', pos);
+                    auto item = buf.substr(pos,
+                        comma == std::string::npos ? std::string::npos : comma - pos);
+                    // trim whitespace
+                    while (!item.empty() && std::isspace(static_cast<unsigned char>(item.front()))) item.erase(item.begin());
+                    while (!item.empty() && std::isspace(static_cast<unsigned char>(item.back())))  item.pop_back();
+                    if (!item.empty()) out.insert(std::move(item));
+                    if (comma == std::string::npos) break;
+                    pos = comma + 1;
+                }
+            }
+            return out;
+        }();
+
+        return allowed.contains(origin);
     }
 
     // Static state (Drogon manages controller lifetime)
