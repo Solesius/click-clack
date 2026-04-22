@@ -50,6 +50,17 @@ if(_cc_rocksdb_probe_includes)
     list(REMOVE_DUPLICATES _cc_rocksdb_probe_includes)
     set(CMAKE_REQUIRED_INCLUDES ${_cc_rocksdb_probe_includes})
 endif()
+find_path(CC_ROCKSDB_HEADER_DIR
+    NAMES rocksdb/db.h
+    PATHS ${_cc_rocksdb_probe_includes}
+)
+if(CC_ROCKSDB_HEADER_DIR)
+    # celer re-runs its own header probe inside the FetchContent subproject.
+    # On macOS FFI-only builds that probe can false-negative even when the
+    # header is discoverable from the top-level configure, which drops
+    # src/backend/rocksdb.cpp from libceler.a and later breaks linking.
+    set(CELER_ROCKSDB_HEADER_FOUND ON CACHE INTERNAL "RocksDB header is available for celer" FORCE)
+endif()
 
 # Composite-tree storage engine
 set(CELER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
