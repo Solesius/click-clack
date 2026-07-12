@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <functional>
 #include <mutex>
 #include <random>
@@ -22,6 +23,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace cc {
 
@@ -65,15 +67,34 @@ public:
     // ── Initialization ──────────────────────────────────────
 
     void register_tools() {
+        // F-07: every user-supplied limit is clamped into [1, kMaxQueryLimit]
+        // so a malicious caller can't push us into an unbounded scan.
+        // (Constants live at class scope so lambdas capture them implicitly.)
+
+        // F-06: `as_agent` is a declared identity override, not an auth
+        // delegation. Operators that do NOT trust remote callers can set
+        // CC_FORBID_AGENT_OVERRIDE=1 to ignore the argument entirely.
+        const bool forbid_override = [] {
+            const char* v = std::getenv("CC_FORBID_AGENT_OVERRIDE");
+            return v && *v && std::string_view{v} != "0" && std::string_view{v} != "false";
+        }();
+
         // Resolve the effective agent id: explicit `as_agent` argument wins
         // over the transport-level caller id. This makes per-request identity
         // override a first-class primitive (fixes the "agent-c and vscode-copilot
         // looked like the same process" papercut).
-        auto who = [](const json& args, std::string_view caller) -> std::string {
-            if (args.contains("as_agent") && args["as_agent"].is_string()) {
+        auto who = [forbid_override](const json& args, std::string_view caller) -> std::string {
+            if (!forbid_override
+                && args.contains("as_agent") && args["as_agent"].is_string()) {
                 auto s = args["as_agent"].get<std::string>();
                 if (!s.empty()) return s;
             }
+            return std::string{caller};
+        };
+
+        // For audit/debug surfaces we always want to record the real
+        // transport caller alongside any declared identity.
+        auto real_caller = [](std::string_view caller) -> std::string {
             return std::string{caller};
         };
 
@@ -95,10 +116,10 @@ public:
         };
 
         // ── cc.whoami ───────────────────────────────────────
-        tools_["cc.whoami"] = [who](const json& args, std::string_view caller) -> json {
+        tools_["cc.whoami"] = [who, real_caller](const json& args, std::string_view caller) -> json {
             return json{
                 {"agent_id",   who(args, caller)},
-                {"transport_caller", std::string{caller}},
+                {"transport_caller", real_caller(caller)},
                 {"overridden", args.contains("as_agent")},
             };
         };
@@ -126,10 +147,13 @@ public:
             return out;
         };
 
+        // F-07: every user-supplied limit is clamped into [1, 10'000] below
+        // so a malicious caller can't push us into an unbounded scan.
+
         // Query tools
         tools_["cc.query_timeline"] = [this](const json& args, std::string_view) -> json {
             auto since = args.value("since_epoch", std::uint64_t{0});
-            auto limit = args.value("limit", 100);
+            auto limit = std::clamp(args.value("limit", 100), 1, 10'000);
 
             // Single-verb legacy filter
             std::optional<std::string> verb;
@@ -147,7 +171,7 @@ public:
             std::string agent_filter = args.value("agent_id", "");
 
             // Pull a generous window so we can filter server-side and still honour `limit`.
-            auto window = std::max(limit * 8, 256);
+            auto window = std::clamp(limit * 8, 256, 100'000);
             auto result = wal_.read_range(since, window);
             if (!result) return json{{"error", result.error().message}};
 
@@ -167,7 +191,7 @@ public:
         tools_["cc.query_agent_log"] = [this](const json& args, std::string_view) -> json {
             auto agent_id = args.value("agent_id", "");
             auto since    = args.value("since_epoch", std::uint64_t{0});
-            auto limit    = args.value("limit", 100);
+            auto limit    = std::clamp(args.value("limit", 100), 1, 10'000);
 
             auto result = views_.query_agent_log(agent_id, since, limit);
             if (!result) return json{{"error", result.error().message}};
@@ -189,7 +213,7 @@ public:
             auto status = args.contains("status_filter")
                 ? std::optional<std::string_view>{args["status_filter"].get<std::string>()}
                 : std::nullopt;
-            auto limit = args.value("limit", 100);
+            auto limit = std::clamp(args.value("limit", 100), 1, 10'000);
 
             auto result = views_.query_tasks(status, limit);
             if (!result) return json{{"error", result.error().message}};
@@ -267,6 +291,7 @@ public:
             PinState snapshot;
             {
                 std::lock_guard lock(pin_mu_);
+                evict_pins_if_over_cap();
                 auto& st = pins_[epoch];
                 st.epoch = epoch;
                 if (unvote) st.voters.erase(agent);
@@ -320,6 +345,7 @@ public:
             PinState snapshot;
             {
                 std::lock_guard lock(pin_mu_);
+                evict_pins_if_over_cap();
                 auto& st = pins_[epoch];
                 st.epoch = epoch;
                 st.manual_override = override_val;
@@ -727,7 +753,7 @@ public:
         tools_["cc.wait"] = [this](const json& args, std::string_view) -> json {
             auto since      = args.value("since_epoch", std::uint64_t{0});
             auto timeout_ms = args.value("timeout_ms", 30000);
-            auto limit      = args.value("limit", 64);
+            auto limit      = std::clamp(args.value("limit", 64), 1, 1024);
             timeout_ms = std::clamp(timeout_ms, 0, 120000); // hard cap 2 min
 
             std::string task_filter  = args.value("task_id",  std::string{});
@@ -844,6 +870,26 @@ private:
     mutable std::mutex                              pin_mu_;
     std::unordered_map<std::uint64_t, PinState>     pins_;
     std::size_t                                     pin_threshold_{2};
+
+    // F-08: bound the pin map. Caller must hold pin_mu_.
+    static constexpr std::size_t kMaxPins = 100'000;
+    void evict_pins_if_over_cap() {
+        if (pins_.size() < kMaxPins) return;
+        // Drop the oldest 10% by updated_us. Preserve entries with an
+        // active manual_override so an operator force-pin can't be
+        // evicted by a flood of votes on unrelated epochs.
+        std::vector<std::pair<std::uint64_t, std::uint64_t>> scored; // (updated_us, epoch)
+        scored.reserve(pins_.size());
+        for (const auto& [ep, st] : pins_) {
+            if (st.manual_override.has_value()) continue;
+            scored.emplace_back(st.updated_us, ep);
+        }
+        std::sort(scored.begin(), scored.end());
+        const auto to_drop = pins_.size() / 10;
+        for (std::size_t i = 0; i < to_drop && i < scored.size(); ++i) {
+            pins_.erase(scored[i].second);
+        }
+    }
 };
 
 } // namespace cc

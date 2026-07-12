@@ -36,6 +36,8 @@ yarn-error.log*
 # ── Runtime state & data ─────────────────────────────────────
 /build/data/
 /data/
+.click-clack/
+.tmp-mcp-data/
 *.wal
 *.wal.idx
 *.log
@@ -71,3 +73,6 @@ RFC-001-CLICK-CLACK.md
 *.gcov
 /coverage/
 lcov.info
+
+# ── Local docs artefacts (security audits, etc.) ─────────────
+/docs/

@@ -90,10 +90,28 @@ void cc_string_free(char* s);
 
 /*
  * Return the last error message recorded on the calling thread,
- * or an empty string if none. The pointer is valid until the
- * next cc_* call on the same thread.
+ * or an empty string if none.
+ *
+ * WARNING: the returned pointer aliases a thread-local std::string and
+ * is invalidated by the NEXT cc_* call on the same thread. Prefer
+ * cc_error_copy() for anything beyond an immediate synchronous read.
  */
 const char* cc_last_error(void);
+
+/*
+ * Copy the current thread-local error into the caller's buffer.
+ *
+ * The message is NUL-terminated if `dst` has at least one byte of
+ * capacity, and truncated to `cap - 1` bytes if it would not fit.
+ *
+ * Returns the full source length in bytes (excluding NUL), so callers
+ * can detect truncation by comparing to `cap`. Returns 0 with `dst[0] = 0`
+ * when no error is set or when `dst == NULL`.
+ *
+ * This API is safe across async FFI boundaries; the pointer returned by
+ * cc_last_error() is NOT.
+ */
+size_t cc_error_copy(char* dst, size_t cap);
 
 /*
  * Return the library version, e.g. "0.1.0".

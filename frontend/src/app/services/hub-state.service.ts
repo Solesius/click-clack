@@ -17,14 +17,17 @@ export class HubStateService {
   private readonly destroyRef = inject(DestroyRef);
 
   // ── Operator identity (used as `as_agent` for operator-originated calls) ──
+  // F-10: use sessionStorage so the declared operator identity does not
+  // survive tab close. A persistent cross-session "who am I" is an auth
+  // decision that belongs to the hub, not a tab-local UI hint.
   readonly operatorId = signal<string>(
-    localStorage.getItem('cc.operator_id') || 'operator',
+    sessionStorage.getItem('cc.operator_id') || 'operator',
   );
 
   setOperatorId(id: string): void {
     const v = (id || 'operator').trim() || 'operator';
     this.operatorId.set(v);
-    localStorage.setItem('cc.operator_id', v);
+    sessionStorage.setItem('cc.operator_id', v);
   }
 
   // ── Signals ─────────────────────────────────────────────

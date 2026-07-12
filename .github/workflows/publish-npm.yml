@@ -53,6 +53,10 @@ jobs:
 
       - name: Install system deps (macOS)
         if: matrix.platform == 'darwin'
+        # rocksdb is required at *build* time (headers + link against
+        # librocksdb.dylib). The post-build "Bundle RocksDB dylib" step
+        # then copies the resulting librocksdb.N.dylib into the prebuild
+        # so consumers don't need Homebrew RocksDB at runtime.
         run: brew install cmake ninja pkgconf rocksdb
 
       - name: Export Homebrew paths (macOS)
@@ -85,14 +89,75 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build-ffi -j --target click_clack_ffi
 
+      - name: Bundle RocksDB dylib into macOS prebuild
+        if: matrix.platform == 'darwin'
+        run: |
+          set -euxo pipefail
+          out_dir="bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}"
+          mkdir -p "$out_dir"
+          cp build-ffi/libclickclack.dylib "$out_dir/"
+
+          # Recursively walk libclickclack.dylib's dynamic dependency tree
+          # and, for every dep that lives outside /usr/lib and /System/Library,
+          # copy it into $out_dir and rewrite install names so the bundled
+          # library is used at runtime. This covers RocksDB (libclickclack
+          # directly links) *and* its transitive Homebrew deps (gflags,
+          # snappy, lz4, zstd, bz2, ...) so consumers don't need Homebrew at
+          # all.
+          declare -A bundled
+          bundle_deps() {
+            local target="$1"
+            local deps
+            deps="$(otool -L "$target" | tail -n +2 | awk '{print $1}')"
+            for dep in $deps; do
+              # Skip self-reference and system libs shipped with macOS
+              case "$dep" in
+                @*|/usr/lib/*|/System/Library/*)
+                  continue
+                  ;;
+              esac
+              if [ ! -f "$dep" ]; then
+                echo "warning: dep not found on disk: $dep" >&2
+                continue
+              fi
+              local base
+              base="$(basename "$dep")"
+              # Rewrite the reference inside $target either way
+              install_name_tool -change "$dep" "@loader_path/$base" "$target" || true
+              if [ -z "${bundled[$base]:-}" ]; then
+                bundled[$base]=1
+                cp -f "$dep" "$out_dir/$base"
+                chmod u+w "$out_dir/$base"
+                install_name_tool -id "@loader_path/$base" "$out_dir/$base" || true
+                # Recurse into the newly bundled dep
+                bundle_deps "$out_dir/$base"
+              fi
+            done
+          }
+
+          bundle_deps "$out_dir/libclickclack.dylib"
+
+          # Ad-hoc re-sign everything we modified so macOS' integrity check
+          # doesn't reject the patched mach-o images at dlopen time.
+          for f in "$out_dir"/*.dylib; do
+            codesign --force --sign - "$f" || true
+          done
+
+          echo "── Final bundle ─────────────────────────────"
+          ls -la "$out_dir"
+          echo "── libclickclack.dylib deps ─────────────────"
+          otool -L "$out_dir/libclickclack.dylib"
+          echo "── Verify no /opt/homebrew leaks ────────────"
+          if otool -L "$out_dir"/*.dylib | grep -E '/opt/homebrew|/usr/local/(opt|Cellar)' ; then
+            echo "ERROR: bundle still references Homebrew paths" >&2
+            exit 1
+          fi
+
       - name: Stage prebuild
+        if: matrix.platform != 'darwin'
         run: |
           mkdir -p bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}
-          if [ "${{ matrix.platform }}" = "darwin" ]; then
-            cp build-ffi/libclickclack.dylib bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}/
-          else
-            cp build-ffi/libclickclack.so bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}/
-          fi
+          cp build-ffi/libclickclack.so bindings/bun/native/${{ matrix.platform }}-${{ matrix.arch }}/
 
       - name: Upload prebuild
         uses: actions/upload-artifact@v4

@@ -39,7 +39,11 @@ export class WsService {
 
     this.ws.onmessage = (ev: MessageEvent) => {
       try {
-        const msg: WsMessage = JSON.parse(ev.data);
+        // F-04: strip __proto__/constructor/prototype keys during parse so
+        // a hostile frame can't pollute Object.prototype.
+        const safeReviver = (k: string, v: unknown): unknown =>
+          k === '__proto__' || k === 'constructor' || k === 'prototype' ? undefined : v;
+        const msg: WsMessage = JSON.parse(ev.data, safeReviver);
         this.message$.next(msg);
       } catch (err) {
         console.warn('[click-clack] dropping unparseable WS frame', err, ev.data);
@@ -59,7 +63,16 @@ export class WsService {
 
   send(action: string, payload: Record<string, unknown> = {}): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify({ action, ...payload }));
+    // F-04: never spread an untrusted payload — build the wire frame
+    // from explicit own-property keys only so __proto__/constructor
+    // cannot override `action` or pollute the receiver.
+    const frame: Record<string, unknown> = { action };
+    for (const key of Object.keys(payload)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+      if (key === 'action') continue;
+      frame[key] = (payload as Record<string, unknown>)[key];
+    }
+    this.ws.send(JSON.stringify(frame));
   }
 
   postClick(click: Click): void {
