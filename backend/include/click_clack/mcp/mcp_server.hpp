@@ -188,6 +188,16 @@ public:
             return clacks;
         };
 
+        tools_["cc.query_epoch"] = [this](const json& args, std::string_view) -> json {
+            auto epoch = args.value("epoch", std::uint64_t{0});
+            if (epoch == 0) return json{{"error", "epoch required"}};
+
+            auto result = wal_.read_one(epoch);
+            if (!result) return json{{"error", result.error().message}};
+            if (!*result) return json{{"error", "not_found"}, {"epoch", epoch}};
+            return clack_to_json(**result);
+        };
+
         tools_["cc.query_agent_log"] = [this](const json& args, std::string_view) -> json {
             auto agent_id = args.value("agent_id", "");
             auto since    = args.value("since_epoch", std::uint64_t{0});

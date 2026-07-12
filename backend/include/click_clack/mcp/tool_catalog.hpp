@@ -124,6 +124,13 @@ struct ToolDescriptor {
     });
 
     tools.push_back({
+        "cc.query_epoch",
+        "Fetch exactly one clack by epoch from the WAL.",
+        schema_object({{"epoch", prop_integer("Epoch of the clack")}}, {"epoch"}),
+        read_only(),
+    });
+
+    tools.push_back({
         "cc.query_task",
         "Fetch the materialized state of a single task.",
         schema_object({{"task_id", prop_string()}}, {"task_id"}),

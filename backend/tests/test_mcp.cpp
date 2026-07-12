@@ -88,6 +88,34 @@ TEST_F(McpTest, DispatchQueryTimeline) {
     }
 }
 
+TEST_F(McpTest, DispatchQueryEpoch) {
+    auto posted = mcp_->dispatch("cc.post_clack",
+        {
+            {"verb", "ANNOUNCE"},
+            {"task_id", "t-epoch"},
+            {"subject", "Find me by epoch"},
+            {"payload", nlohmann::json{{"marker", true}}},
+        },
+        "epoch-writer");
+    auto epoch = posted.value("epoch", std::uint64_t{0});
+    ASSERT_GT(epoch, 0u);
+
+    auto result = mcp_->dispatch("cc.query_epoch", {{"epoch", epoch}}, "reader");
+    EXPECT_EQ(result.value("epoch", std::uint64_t{0}), epoch);
+    EXPECT_EQ(result.value("verb", ""), "ANNOUNCE");
+    EXPECT_EQ(result.value("agent_id", ""), "epoch-writer");
+    EXPECT_EQ(result.value("task_id", ""), "t-epoch");
+}
+
+TEST_F(McpTest, QueryEpochReturnsErrorsForMissingAndUnknownEpoch) {
+    auto missing_arg = mcp_->dispatch("cc.query_epoch", nlohmann::json::object(), "reader");
+    EXPECT_EQ(missing_arg.value("error", ""), "epoch required");
+
+    auto not_found = mcp_->dispatch("cc.query_epoch", {{"epoch", 999999u}}, "reader");
+    EXPECT_EQ(not_found.value("error", ""), "not_found");
+    EXPECT_EQ(not_found.value("epoch", std::uint64_t{0}), 999999u);
+}
+
 TEST_F(McpTest, DispatchUnknownTool) {
     auto result = mcp_->dispatch("cc.nonexistent", {}, "a1");
     EXPECT_TRUE(result.contains("error"));
@@ -341,7 +369,7 @@ TEST_F(McpTest, ListToolsIncludesAllCategories) {
     for (const auto& t : tools) names.insert(t.value("name", ""));
 
     for (const char* expected : {
-        "cc.post_clack", "cc.query_timeline", "cc.query_agent_log",
+        "cc.post_clack", "cc.query_timeline", "cc.query_epoch", "cc.query_agent_log",
         "cc.query_task", "cc.query_tasks", "cc.query_presence",
         "cc.query_hitl_queue", "cc.claim_task", "cc.report_progress",
         "cc.complete_task", "cc.post_artifact", "cc.heartbeat",
